@@ -90,6 +90,62 @@ def test_validate_envelope_rejects_depth_over_budget(small_dataset, ctx):
     assert "observed_depth exceeds parameter_set multiplicative_depth" in errors
 
 
+def test_validate_envelope_rejects_structural_errors(small_dataset, ctx):
+    y_true, y_pred, sf = small_dataset
+    env = audit_metric(
+        "demographic_parity_difference",
+        y_true,
+        y_pred,
+        sensitive_features=sf,
+        ctx=ctx,
+    )
+    payload = env.to_dict()
+
+    missing = dict(payload)
+    missing.pop("metric_name")
+    assert validate_envelope(missing) == ["missing required field: metric_name"]
+
+    bad = dict(payload)
+    bad["schema_version"] = "wrong"
+    bad["metric_name"] = "not_allowed"
+    bad["observed_depth"] = -1
+    bad["n_samples"] = 0
+    bad["n_groups"] = "nan"
+    bad["op_counts"] = {"ct_pt_muls": -1, "bad": "nan"}
+    bad["value"] = object()
+    bad["timestamp"] = object()
+
+    errors = validate_envelope(
+        bad,
+        allowed_metrics=["demographic_parity_difference"],
+        max_observed_depth=0,
+    )
+    assert "unsupported schema_version 'wrong'" in errors
+    assert "metric_name 'not_allowed' is not allowed" in errors
+    assert "observed_depth must be non-negative" in errors
+    assert "n_samples must be positive" in errors
+    assert "n_groups must be an integer" in errors
+    assert "op_counts['ct_pt_muls'] must be non-negative" in errors
+    assert "op_counts['bad'] must be an integer" in errors
+    assert "value must be numeric" in errors
+    assert "timestamp must be numeric" in errors
+
+
+def test_validate_envelope_rejects_invalid_parameter_set(small_dataset, ctx):
+    y_true, y_pred, sf = small_dataset
+    env = audit_metric(
+        "demographic_parity_difference",
+        y_true,
+        y_pred,
+        sensitive_features=sf,
+        ctx=ctx,
+    )
+    payload = env.to_dict()
+    payload["parameter_set"] = {"backend": "tenseal-ckks"}
+    errors = validate_envelope(payload)
+    assert any(error.startswith("invalid parameter_set:") for error in errors)
+
+
 def test_unknown_metric():
     with pytest.raises(KeyError):
         audit_metric("not_a_real_metric", [0, 1], [0, 1])

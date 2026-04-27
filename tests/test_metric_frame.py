@@ -50,6 +50,21 @@ def test_difference_matches(small_dataset, encrypted_pred, tol):
         assert abs(float(pd_diff[col]) - float(fd_diff[col])) < tol
 
 
+def test_multi_metric_accessors_return_series(small_dataset, encrypted_pred):
+    y_true, _, sf = small_dataset
+    fns = {
+        "selection": fl.selection_rate,
+        "mean": fl.mean_prediction,
+        "count": fl.count,
+    }
+    enc = MetricFrame(metrics=fns, y_true=y_true, y_pred=encrypted_pred, sensitive_features=sf)
+
+    assert set(enc.ratio().index) == set(fns)
+    assert set(enc.group_min().index) == set(fns)
+    assert set(enc.group_max().index) == set(fns)
+    assert enc.by_group["count"].sum() == len(y_true)
+
+
 def test_fhe_alias_rejects_plaintext(small_dataset):
     y_true, y_pred, sf = small_dataset
     with pytest.raises(TypeError):
@@ -73,3 +88,22 @@ def test_unknown_metric_requires_optin(small_dataset, encrypted_pred):
         sensitive_features=sf, allow_decrypt=True,
     )
     assert enc.by_group.shape[0] >= 1
+
+
+def test_unknown_metric_decrypt_fallback_with_sample_weight(small_dataset, encrypted_pred):
+    y_true, _, sf = small_dataset
+    sample_weight = np.linspace(1.0, 2.0, len(y_true))
+
+    def weighted_mean(y_t, y_p, sample_weight=None):
+        del y_t
+        return float(np.average(y_p, weights=sample_weight))
+
+    enc = MetricFrame(
+        metrics=weighted_mean,
+        y_true=y_true,
+        y_pred=encrypted_pred,
+        sensitive_features=sf,
+        sample_params={"sample_weight": sample_weight},
+        allow_decrypt=True,
+    )
+    assert enc.by_group.shape[0] == len(set(sf))
