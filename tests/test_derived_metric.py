@@ -1,14 +1,11 @@
 """Encrypted-aware make_derived_metric + group_min/group_max."""
 
-import numpy as np
+import fairlearn.metrics as fl
 import pytest
 
-import fairlearn.metrics as fl
-
 from fairlearn_fhe.metrics import (
-    make_derived_metric,
     MetricFrame,
-    selection_rate,
+    make_derived_metric,
 )
 
 
@@ -50,8 +47,15 @@ def test_derived_group_max(small_dataset, encrypted_pred, tol):
 
 def test_metric_frame_group_min_max(small_dataset, encrypted_pred, tol):
     y_true, y_pred, sf = small_dataset
-    plain = fl.MetricFrame(metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf)
-    enc = MetricFrame(metrics=fl.selection_rate, y_true=y_true, y_pred=encrypted_pred, sensitive_features=sf)
+    plain = fl.MetricFrame(
+        metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf
+    )
+    enc = MetricFrame(
+        metrics=fl.selection_rate,
+        y_true=y_true,
+        y_pred=encrypted_pred,
+        sensitive_features=sf,
+    )
     assert abs(float(plain.group_min()) - float(enc.group_min())) < tol
     assert abs(float(plain.group_max()) - float(enc.group_max())) < tol
 
@@ -73,4 +77,6 @@ def test_passthrough_plaintext(small_dataset):
     y_true, y_pred, sf = small_dataset
     m_plain = fl.make_derived_metric(metric=fl.selection_rate, transform="difference")
     m_fhe = make_derived_metric(metric=fl.selection_rate, transform="difference")
-    assert m_plain(y_true, y_pred, sensitive_features=sf) == m_fhe(y_true, y_pred, sensitive_features=sf)
+    assert m_plain(y_true, y_pred, sensitive_features=sf) == m_fhe(
+        y_true, y_pred, sensitive_features=sf
+    )

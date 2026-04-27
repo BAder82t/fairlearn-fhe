@@ -2,10 +2,8 @@
 
 Drop-in encrypted Fairlearn metrics. Identical API surface; ciphertext arithmetic over CKKS via TenSEAL.
 
-`fairlearn-fhe` is an early-stage VaultBytes startup project maintained from
-Bader Alissaei's GitHub namespace: <https://github.com/BAder82t/fairlearn-fhe>.
-The personal namespace is intentional while the project is pre-company-org and
-pre-certification.
+`fairlearn-fhe` is an early-stage project maintained at
+<https://github.com/BAder82t/fairlearn-fhe>.
 
 ```python
 # plaintext
@@ -80,7 +78,7 @@ Two CKKS backends share a single API:
 from fairlearn_fhe import build_context
 
 ctx_tenseal = build_context(backend="tenseal")  # default; pip-installable
-ctx_openfhe = build_context(backend="openfhe")  # production-grade, opt-in
+ctx_openfhe = build_context(backend="openfhe")  # native OpenFHE backend, opt-in
 ```
 
 Benchmarked on n=1024, 3 sensitive groups, depth-6 circuit:
@@ -90,7 +88,8 @@ Benchmarked on n=1024, 3 sensitive groups, depth-6 circuit:
 | tenseal | 888 ms | 7.5 ms | 284 ms | 1e-7 | 562 ms | 2e-7 |
 | openfhe | 321 ms | 13.5 ms | 505 ms | 2e-10 | 1015 ms | 4e-11 |
 
-OpenFHE delivers ~1000× higher precision; TenSEAL is ~2× faster per metric and ships via pip on every platform.
+On the included benchmark, OpenFHE gives lower numeric error; TenSEAL is faster
+per metric and ships via pip on every supported platform.
 
 ## Install
 

@@ -10,8 +10,8 @@ object since OpenFHE-Python ties decryption to a specific keypair.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Sequence
 
 import numpy as np
 
@@ -20,8 +20,8 @@ NAME = "openfhe-ckks"
 
 @dataclass
 class OpenFHEContext:
-    crypto_context: "object"
-    keys: "object"
+    crypto_context: object
+    keys: object
     scale: float
     poly_modulus_degree: int
     n_slots: int
@@ -84,7 +84,7 @@ def encrypt(ctx: OpenFHEContext, values: Sequence[float]):
     return cc.Encrypt(ctx.keys.publicKey, pt)
 
 
-def decrypt(ct, n: int, ctx: OpenFHEContext) -> List[float]:
+def decrypt(ct, n: int, ctx: OpenFHEContext) -> list[float]:
     cc = ctx.crypto_context
     pt = cc.Decrypt(ctx.keys.secretKey, ct)
     pt.SetLength(n)

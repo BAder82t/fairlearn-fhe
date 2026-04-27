@@ -14,24 +14,24 @@ function falls through to plain Fairlearn) or an
 """
 
 from ._base_metrics import (
-    selection_rate,
-    mean_prediction,
-    true_positive_rate,
-    true_negative_rate,
-    false_positive_rate,
-    false_negative_rate,
     count,
+    false_negative_rate,
+    false_positive_rate,
+    mean_prediction,
+    selection_rate,
+    true_negative_rate,
+    true_positive_rate,
 )
 from ._fairness_metrics import (
     demographic_parity_difference,
     demographic_parity_ratio,
-    equalized_odds_difference,
-    equalized_odds_ratio,
     equal_opportunity_difference,
     equal_opportunity_ratio,
+    equalized_odds_difference,
+    equalized_odds_ratio,
 )
-from ._metric_frame import MetricFrame, EncryptedMetricFrame
 from ._make_derived_metric import make_derived_metric
+from ._metric_frame import EncryptedMetricFrame, MetricFrame
 
 __all__ = [
     "MetricFrame",

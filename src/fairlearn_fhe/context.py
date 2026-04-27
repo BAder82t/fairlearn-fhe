@@ -3,7 +3,7 @@
 Two backends are supported:
 
 - ``tenseal`` (default): pip-installable; CKKS via Microsoft SEAL.
-- ``openfhe``: opt-in; production-grade CKKS via OpenFHE-Python.
+- ``openfhe``: opt-in; native CKKS via OpenFHE-Python.
 
 Use :func:`build_context` to construct one. The returned object is a
 backend-specific :class:`CKKSContext` that the rest of the library
@@ -12,8 +12,9 @@ accepts uniformly.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, List, Sequence
+from typing import Any
 
 from ._backends import BackendName, get_backend, get_default_backend
 
@@ -35,7 +36,7 @@ class CKKSContext:
     def encrypt_vector(self, values: Sequence[float]):
         return self.backend_module.encrypt(self.raw, values)
 
-    def decrypt_vector(self, ct, n: int) -> List[float]:
+    def decrypt_vector(self, ct, n: int) -> list[float]:
         if self.backend_name == "openfhe":
             return self.backend_module.decrypt(ct, n, self.raw)
         return self.backend_module.decrypt(ct, n)

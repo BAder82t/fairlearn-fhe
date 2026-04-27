@@ -11,13 +11,12 @@ envelope. Counters are global; reset between calls with
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Sequence
 
 import numpy as np
 
 from .context import CKKSContext
-
 
 OP_COUNTERS: dict[str, int] = {
     "ct_ct_muls": 0,
@@ -50,7 +49,7 @@ class EncryptedVector:
     # ------------------------------------------------------------------
 
     @classmethod
-    def encrypt(cls, ctx: CKKSContext, values: Sequence[float]) -> "EncryptedVector":
+    def encrypt(cls, ctx: CKKSContext, values: Sequence[float]) -> EncryptedVector:
         vals = [float(v) for v in np.asarray(values).ravel()]
         ct = ctx.encrypt_vector(vals)
         return cls(ciphertext=ct, n=len(vals), ctx=ctx, depth=0)
@@ -72,11 +71,14 @@ class EncryptedVector:
     def _is_openfhe(self) -> bool:
         return self.ctx.backend_name == "openfhe"
 
-    def __add__(self, other) -> "EncryptedVector":
+    def __add__(self, other) -> EncryptedVector:
         OP_COUNTERS["additions"] += 1
         be = self._be()
         if isinstance(other, EncryptedVector):
-            new_ct = be.add(self.ciphertext, other.ciphertext, self.ctx.raw) if self._is_openfhe() else be.add(self.ciphertext, other.ciphertext)
+            if self._is_openfhe():
+                new_ct = be.add(self.ciphertext, other.ciphertext, self.ctx.raw)
+            else:
+                new_ct = be.add(self.ciphertext, other.ciphertext)
             return EncryptedVector(new_ct, self.n, self.ctx, depth=max(self.depth, other.depth))
         addend = _as_list(other, self.n)
         # Plaintext add: route via mul_pt's plaintext encoder when possible;
@@ -91,11 +93,14 @@ class EncryptedVector:
 
     __radd__ = __add__
 
-    def __sub__(self, other) -> "EncryptedVector":
+    def __sub__(self, other) -> EncryptedVector:
         OP_COUNTERS["subtractions"] += 1
         be = self._be()
         if isinstance(other, EncryptedVector):
-            new_ct = be.sub(self.ciphertext, other.ciphertext, self.ctx.raw) if self._is_openfhe() else be.sub(self.ciphertext, other.ciphertext)
+            if self._is_openfhe():
+                new_ct = be.sub(self.ciphertext, other.ciphertext, self.ctx.raw)
+            else:
+                new_ct = be.sub(self.ciphertext, other.ciphertext)
             return EncryptedVector(new_ct, self.n, self.ctx, depth=max(self.depth, other.depth))
         subv = _as_list(other, self.n)
         if self._is_openfhe():
@@ -106,35 +111,50 @@ class EncryptedVector:
             new_ct = self.ciphertext - subv
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
 
-    def __neg__(self) -> "EncryptedVector":
+    def __neg__(self) -> EncryptedVector:
         be = self._be()
-        new_ct = be.neg(self.ciphertext, self.ctx.raw) if self._is_openfhe() else be.neg(self.ciphertext)
+        if self._is_openfhe():
+            new_ct = be.neg(self.ciphertext, self.ctx.raw)
+        else:
+            new_ct = be.neg(self.ciphertext)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
 
-    def mul_pt(self, plaintext) -> "EncryptedVector":
+    def mul_pt(self, plaintext) -> EncryptedVector:
         OP_COUNTERS["ct_pt_muls"] += 1
         pt = _as_list(plaintext, self.n)
         be = self._be()
-        new_ct = be.mul_pt(self.ciphertext, pt, self.ctx.raw) if self._is_openfhe() else be.mul_pt(self.ciphertext, pt)
+        if self._is_openfhe():
+            new_ct = be.mul_pt(self.ciphertext, pt, self.ctx.raw)
+        else:
+            new_ct = be.mul_pt(self.ciphertext, pt)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth + 1)
 
-    def mul_scalar(self, s: float) -> "EncryptedVector":
+    def mul_scalar(self, s: float) -> EncryptedVector:
         OP_COUNTERS["ct_scalar_muls"] += 1
         be = self._be()
-        new_ct = be.mul_scalar(self.ciphertext, float(s), self.ctx.raw) if self._is_openfhe() else be.mul_scalar(self.ciphertext, float(s))
+        if self._is_openfhe():
+            new_ct = be.mul_scalar(self.ciphertext, float(s), self.ctx.raw)
+        else:
+            new_ct = be.mul_scalar(self.ciphertext, float(s))
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
 
-    def mul_ct(self, other: "EncryptedVector") -> "EncryptedVector":
+    def mul_ct(self, other: EncryptedVector) -> EncryptedVector:
         OP_COUNTERS["ct_ct_muls"] += 1
         be = self._be()
-        new_ct = be.mul_ct(self.ciphertext, other.ciphertext, self.ctx.raw) if self._is_openfhe() else be.mul_ct(self.ciphertext, other.ciphertext)
+        if self._is_openfhe():
+            new_ct = be.mul_ct(self.ciphertext, other.ciphertext, self.ctx.raw)
+        else:
+            new_ct = be.mul_ct(self.ciphertext, other.ciphertext)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=max(self.depth, other.depth) + 1)
 
-    def sum_all(self) -> "EncryptedVector":
+    def sum_all(self) -> EncryptedVector:
         if self.n > 1:
             OP_COUNTERS["rotations"] += int(np.log2(self.n))
         be = self._be()
-        new_ct = be.sum_all(self.ciphertext, self.n, self.ctx.raw) if self._is_openfhe() else be.sum_all(self.ciphertext, self.n)
+        if self._is_openfhe():
+            new_ct = be.sum_all(self.ciphertext, self.n, self.ctx.raw)
+        else:
+            new_ct = be.sum_all(self.ciphertext, self.n)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
 
 
@@ -146,7 +166,7 @@ def decrypt(ev: EncryptedVector) -> np.ndarray:
     return ev.decrypt()
 
 
-def _as_list(value, target_len: int) -> List[float]:
+def _as_list(value, target_len: int) -> list[float]:
     if isinstance(value, np.ndarray):
         return [float(v) for v in value.ravel().tolist()]
     if isinstance(value, (list, tuple)):

@@ -18,7 +18,6 @@ values forms the group set, matching Fairlearn's `MetricFrame`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -39,18 +38,18 @@ class EncryptedMaskSet:
     :meth:`attach_label_counts` once at encryption time when the
     plaintext y_true is known to the encrypting party.
     """
-    labels: List
-    masks: Dict[object, EncryptedVector]
-    counts: Dict[object, float]
+    labels: list
+    masks: dict[object, EncryptedVector]
+    counts: dict[object, float]
     n: int
-    positives: Dict[object, float] | None = None
-    negatives: Dict[object, float] | None = None
+    positives: dict[object, float] | None = None
+    negatives: dict[object, float] | None = None
 
     def items(self):
         for lbl in self.labels:
             yield lbl, self.masks[lbl], self.counts[lbl]
 
-    def attach_label_counts(self, y_true, sample_weight=None) -> "EncryptedMaskSet":
+    def attach_label_counts(self, y_true, sample_weight=None) -> EncryptedMaskSet:
         """Stamp per-group positive/negative counts using plaintext y_true.
 
         Returns ``self`` for chaining.
@@ -60,8 +59,8 @@ class EncryptedMaskSet:
         # Recover plaintext masks lazily by decrypting; cheap because
         # we typically attach at encryption time when the mask source
         # is still in plaintext.
-        pos: Dict[object, float] = {}
-        neg: Dict[object, float] = {}
+        pos: dict[object, float] = {}
+        neg: dict[object, float] = {}
         for lbl in self.labels:
             m = np.asarray(self.masks[lbl].decrypt(), dtype=float).round()
             mw = m * sw
@@ -87,10 +86,10 @@ def encrypt_sensitive_features(
     confusion-matrix circuits).
     """
     labels, plaintext_masks = group_masks(sensitive_features)
-    enc_masks: Dict[object, EncryptedVector] = {}
-    counts: Dict[object, float] = {}
-    pos: Dict[object, float] | None = {} if y_true is not None else None
-    neg: Dict[object, float] | None = {} if y_true is not None else None
+    enc_masks: dict[object, EncryptedVector] = {}
+    counts: dict[object, float] = {}
+    pos: dict[object, float] | None = {} if y_true is not None else None
+    neg: dict[object, float] | None = {} if y_true is not None else None
     sw = None
     if y_true is not None:
         y = np.asarray(y_true, dtype=float)
@@ -114,7 +113,7 @@ def encrypt_sensitive_features(
     )
 
 
-def group_masks(sensitive_features) -> Tuple[List, Dict[object, np.ndarray]]:
+def group_masks(sensitive_features) -> tuple[list, dict[object, np.ndarray]]:
     """Return ``(labels, masks)`` where ``masks[label]`` is a ``{0,1}``
     plaintext vector aligned with ``sensitive_features``.
 
@@ -127,7 +126,7 @@ def group_masks(sensitive_features) -> Tuple[List, Dict[object, np.ndarray]]:
     else:
         keys = pd.MultiIndex.from_frame(sf).to_flat_index().to_numpy()
 
-    labels: List = []
+    labels: list = []
     seen = set()
     for k in keys:
         if k not in seen:

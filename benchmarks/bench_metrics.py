@@ -13,18 +13,18 @@ import argparse
 import time
 from contextlib import contextmanager
 
+import fairlearn.metrics as fl
 import numpy as np
 
-import fairlearn.metrics as fl
 from fairlearn_fhe import build_context, encrypt
 from fairlearn_fhe.metrics import (
     demographic_parity_difference,
     demographic_parity_ratio,
-    equalized_odds_difference,
     equal_opportunity_difference,
+    equalized_odds_difference,
+    false_positive_rate,
     selection_rate,
     true_positive_rate,
-    false_positive_rate,
 )
 
 
@@ -44,7 +44,7 @@ def main(n: int, seed: int) -> None:
     y_pred = rng.integers(0, 2, size=n).astype(float)
     sf = rng.choice(["A", "B", "C"], size=n)
 
-    print(f"Building CKKS context (poly_modulus_degree=2^14, depth=6)...")
+    print("Building CKKS context (poly_modulus_degree=2^14, depth=6)...")
     with timer() as t_ctx:
         ctx = build_context()
     with timer() as t_enc:
@@ -53,24 +53,41 @@ def main(n: int, seed: int) -> None:
     print(f"  encrypt n={n}: {t_enc['elapsed']*1000:.1f} ms")
 
     cases = [
-        ("selection_rate", lambda: fl.selection_rate(y_true, y_pred),
-         lambda: selection_rate(y_true, y_pred_enc)),
-        ("true_positive_rate", lambda: fl.true_positive_rate(y_true, y_pred),
-         lambda: true_positive_rate(y_true, y_pred_enc)),
-        ("false_positive_rate", lambda: fl.false_positive_rate(y_true, y_pred),
-         lambda: false_positive_rate(y_true, y_pred_enc)),
-        ("demographic_parity_difference",
-         lambda: fl.demographic_parity_difference(y_true, y_pred, sensitive_features=sf),
-         lambda: demographic_parity_difference(y_true, y_pred_enc, sensitive_features=sf)),
-        ("demographic_parity_ratio",
-         lambda: fl.demographic_parity_ratio(y_true, y_pred, sensitive_features=sf),
-         lambda: demographic_parity_ratio(y_true, y_pred_enc, sensitive_features=sf)),
-        ("equalized_odds_difference",
-         lambda: fl.equalized_odds_difference(y_true, y_pred, sensitive_features=sf),
-         lambda: equalized_odds_difference(y_true, y_pred_enc, sensitive_features=sf)),
-        ("equal_opportunity_difference",
-         lambda: fl.equal_opportunity_difference(y_true, y_pred, sensitive_features=sf),
-         lambda: equal_opportunity_difference(y_true, y_pred_enc, sensitive_features=sf)),
+        (
+            "selection_rate",
+            lambda: fl.selection_rate(y_true, y_pred),
+            lambda: selection_rate(y_true, y_pred_enc),
+        ),
+        (
+            "true_positive_rate",
+            lambda: fl.true_positive_rate(y_true, y_pred),
+            lambda: true_positive_rate(y_true, y_pred_enc),
+        ),
+        (
+            "false_positive_rate",
+            lambda: fl.false_positive_rate(y_true, y_pred),
+            lambda: false_positive_rate(y_true, y_pred_enc),
+        ),
+        (
+            "demographic_parity_difference",
+            lambda: fl.demographic_parity_difference(y_true, y_pred, sensitive_features=sf),
+            lambda: demographic_parity_difference(y_true, y_pred_enc, sensitive_features=sf),
+        ),
+        (
+            "demographic_parity_ratio",
+            lambda: fl.demographic_parity_ratio(y_true, y_pred, sensitive_features=sf),
+            lambda: demographic_parity_ratio(y_true, y_pred_enc, sensitive_features=sf),
+        ),
+        (
+            "equalized_odds_difference",
+            lambda: fl.equalized_odds_difference(y_true, y_pred, sensitive_features=sf),
+            lambda: equalized_odds_difference(y_true, y_pred_enc, sensitive_features=sf),
+        ),
+        (
+            "equal_opportunity_difference",
+            lambda: fl.equal_opportunity_difference(y_true, y_pred, sensitive_features=sf),
+            lambda: equal_opportunity_difference(y_true, y_pred_enc, sensitive_features=sf),
+        ),
     ]
 
     print()
@@ -81,7 +98,10 @@ def main(n: int, seed: int) -> None:
             p = plain_fn()
         with timer() as tf:
             f = fhe_fn()
-        print(f"{name:<35} {tp['elapsed']*1000:>10.2f} {tf['elapsed']*1000:>10.2f} {abs(p-f):>10.2e}")
+        print(
+            f"{name:<35} {tp['elapsed'] * 1000:>10.2f} "
+            f"{tf['elapsed'] * 1000:>10.2f} {abs(p - f):>10.2e}"
+        )
 
 
 if __name__ == "__main__":

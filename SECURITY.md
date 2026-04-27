@@ -1,7 +1,7 @@
 # Security Policy
 
-`fairlearn-fhe` is an early-stage startup project for encrypted fairness-metric
-audits. It is not a certified cryptographic product.
+`fairlearn-fhe` is an early-stage project for encrypted fairness-metric audits.
+It is not a certified cryptographic product.
 
 ## Reporting
 
@@ -31,4 +31,3 @@ Out of scope:
 - unsupported parameter sets
 - attacks requiring access to secret keys or local developer machines
 - compliance, legal, or certification claims
-

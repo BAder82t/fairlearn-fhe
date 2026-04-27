@@ -1,17 +1,16 @@
 """Encrypted fairness metrics match plaintext Fairlearn within CKKS noise."""
 
+import fairlearn.metrics as fl
 import numpy as np
 import pytest
-
-import fairlearn.metrics as fl
 
 from fairlearn_fhe.metrics import (
     demographic_parity_difference,
     demographic_parity_ratio,
-    equalized_odds_difference,
-    equalized_odds_ratio,
     equal_opportunity_difference,
     equal_opportunity_ratio,
+    equalized_odds_difference,
+    equalized_odds_ratio,
 )
 
 
@@ -61,9 +60,14 @@ def test_equal_opportunity_ratio(small_dataset, encrypted_pred, tol):
 
 def test_method_to_overall(small_dataset, encrypted_pred, tol):
     y_true, y_pred, sf = small_dataset
-    plain = fl.demographic_parity_difference(y_true, y_pred, sensitive_features=sf, method="to_overall")
+    plain = fl.demographic_parity_difference(
+        y_true, y_pred, sensitive_features=sf, method="to_overall"
+    )
     enc = demographic_parity_difference(
-        y_true, encrypted_pred, sensitive_features=sf, method="to_overall",
+        y_true,
+        encrypted_pred,
+        sensitive_features=sf,
+        method="to_overall",
     )
     assert abs(plain - enc) < tol
 

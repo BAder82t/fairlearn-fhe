@@ -2,11 +2,8 @@
 
 **Drop-in encrypted Fairlearn metrics.** Identical API surface; ciphertext arithmetic over CKKS via TenSEAL or OpenFHE.
 
-`fairlearn-fhe` is an early-stage VaultBytes startup project maintained from
-Bader Alissaei's GitHub namespace:
-[BAder82t/fairlearn-fhe](https://github.com/BAder82t/fairlearn-fhe). The
-personal namespace is intentional while the project is pre-company-org and
-pre-certification.
+`fairlearn-fhe` is an early-stage project maintained at
+[BAder82t/fairlearn-fhe](https://github.com/BAder82t/fairlearn-fhe).
 
 ```python
 # plaintext (existing Fairlearn workflow)
@@ -28,14 +25,17 @@ disp = demographic_parity_difference(y_true, y_pred_enc, sensitive_features=A)
 
 ## Why
 
-Vendors auditing fairness on protected attributes cannot share raw labels, predictions, or sensitive features with auditors. Fairlearn (1.5K+ stars, the JMLR'23 standard fairness library) has no FHE plugin. fairlearn-fhe ports the canonical metric set to CKKS without changing the call signature.
+Fairness audits often require the auditor to see labels and group-level
+denominators while the vendor keeps model predictions confidential. Fairlearn
+(the JMLR'23 standard fairness library) has no FHE plugin. fairlearn-fhe ports
+the canonical metric set to CKKS without changing the call signature.
 
 ## What is shipped
 
 - 12 canonical metrics (selection_rate, mean_prediction, true/false positive/negative rate, demographic parity diff/ratio, equalized odds diff/ratio, equal opportunity diff/ratio).
 - `MetricFrame` and `make_derived_metric` with the same `.by_group`, `.overall`, `.difference()`, `.ratio()`, `.group_min()`, `.group_max()` accessors.
 - Two trust models: encrypted `y_pred` only (Mode A); encrypted `y_pred` + sensitive features (Mode B).
-- Two CKKS backends: TenSEAL (pip) and OpenFHE (production-grade, opt-in).
+- Two CKKS backends: TenSEAL (pip) and OpenFHE (native backend, opt-in).
 - A canonical `MetricEnvelope` with parameter-set hash, observed depth, and op counts for regulator logging.
 
 ## Trust posture

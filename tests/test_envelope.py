@@ -2,10 +2,15 @@
 
 import json
 
-import numpy as np
 import pytest
 
-from fairlearn_fhe import audit_metric, ParameterSet
+from fairlearn_fhe import (
+    ENVELOPE_SCHEMA,
+    MetricEnvelope,
+    ParameterSet,
+    audit_metric,
+    validate_envelope,
+)
 
 
 def test_audit_metric_envelope(small_dataset, ctx):
@@ -23,8 +28,10 @@ def test_audit_metric_envelope(small_dataset, ctx):
     assert env.observed_depth >= 1
     assert env.op_counts["ct_pt_muls"] >= 3  # one per group
     payload = env.to_dict()
+    assert payload["schema_version"] == ENVELOPE_SCHEMA
     assert payload["parameter_set_hash"]
     assert json.loads(env.to_json())["metric_name"] == "demographic_parity_difference"
+    assert validate_envelope(payload) == []
 
 
 def test_parameter_hash_stable(ctx):
@@ -41,6 +48,46 @@ def test_parameter_hash_stable(ctx):
         scaling_factor_bits=40,
     )
     assert ps1.hash() == ps2.hash()
+
+
+def test_envelope_roundtrip(small_dataset, ctx):
+    y_true, y_pred, sf = small_dataset
+    env = audit_metric(
+        "demographic_parity_difference",
+        y_true, y_pred,
+        sensitive_features=sf,
+        ctx=ctx,
+    )
+    clone = MetricEnvelope.from_json(env.to_json())
+    assert clone.to_dict() == env.to_dict()
+
+
+def test_validate_envelope_detects_tampering(small_dataset, ctx):
+    y_true, y_pred, sf = small_dataset
+    env = audit_metric(
+        "demographic_parity_difference",
+        y_true, y_pred,
+        sensitive_features=sf,
+        ctx=ctx,
+    )
+    payload = env.to_dict()
+    payload["parameter_set"]["scaling_factor_bits"] = 30
+    errors = validate_envelope(payload)
+    assert "parameter_set_hash does not match parameter_set" in errors
+
+
+def test_validate_envelope_rejects_depth_over_budget(small_dataset, ctx):
+    y_true, y_pred, sf = small_dataset
+    env = audit_metric(
+        "demographic_parity_difference",
+        y_true, y_pred,
+        sensitive_features=sf,
+        ctx=ctx,
+    )
+    payload = env.to_dict()
+    payload["observed_depth"] = payload["parameter_set"]["multiplicative_depth"] + 1
+    errors = validate_envelope(payload)
+    assert "observed_depth exceeds parameter_set multiplicative_depth" in errors
 
 
 def test_unknown_metric():

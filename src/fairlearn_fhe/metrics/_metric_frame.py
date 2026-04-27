@@ -21,13 +21,13 @@ plaintext via decryption (a logged warning) if the user opts in via
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Mapping
-
-import numpy as np
-import pandas as pd
+from typing import Any
 
 import fairlearn.metrics as _fl
+import numpy as np
+import pandas as pd
 
 from .._circuits import (
     aggregate_difference,
@@ -40,8 +40,7 @@ from .._circuits import (
 from .._groups import EncryptedMaskSet, group_masks
 from ..encrypted import EncryptedVector
 
-
-_KNOWN_ENCRYPTED: Dict[Any, str] = {
+_KNOWN_ENCRYPTED: dict[Any, str] = {
     _fl.selection_rate: "selection_rate",
     _fl.mean_prediction: "mean_prediction",
     _fl.true_positive_rate: "tpr",
@@ -104,7 +103,7 @@ def _resolve_metric(
     masks,
     sample_weight: np.ndarray | None,
     allow_decrypt: bool,
-) -> Dict[object, float]:
+) -> dict[object, float]:
     # Unwrap functools.partial so derived metrics built on top of the
     # canonical Fairlearn callables route through the encrypted path.
     base = metric
@@ -151,7 +150,7 @@ def _resolve_metric(
         )
     # Decrypt-and-fallback path (plaintext masks only).
     y_p = y_pred_enc.decrypt()
-    out: Dict[object, float] = {}
+    out: dict[object, float] = {}
     for label, mask in masks.items():
         sel = mask > 0
         kwargs = {}
@@ -249,8 +248,8 @@ class MetricFrame:
 
         sample_params = dict(sample_params or {})
 
-        per_group_rows: Dict[str, Dict[object, float]] = {}
-        overall: Dict[str, float] = {}
+        per_group_rows: dict[str, dict[object, float]] = {}
+        overall: dict[str, float] = {}
 
         for name, metric in metric_dict.items():
             sw = None

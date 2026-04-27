@@ -12,14 +12,24 @@ encryption and decrypted at the audit boundary.
 
 from __future__ import annotations
 
+from ._groups import EncryptedMaskSet, encrypt_sensitive_features
+from .audit import audit_metric
 from .context import CKKSContext, build_context, default_context
 from .encrypted import (
-    EncryptedVector, encrypt, decrypt,
-    OP_COUNTERS, reset_op_counters, snapshot_op_counters,
+    OP_COUNTERS,
+    EncryptedVector,
+    decrypt,
+    encrypt,
+    reset_op_counters,
+    snapshot_op_counters,
 )
-from .envelope import MetricEnvelope, ParameterSet, parameter_set_from_context
-from .audit import audit_metric
-from ._groups import EncryptedMaskSet, encrypt_sensitive_features
+from .envelope import (
+    ENVELOPE_SCHEMA,
+    MetricEnvelope,
+    ParameterSet,
+    parameter_set_from_context,
+    validate_envelope,
+)
 
 __all__ = [
     "CKKSContext",
@@ -33,7 +43,9 @@ __all__ = [
     "snapshot_op_counters",
     "MetricEnvelope",
     "ParameterSet",
+    "ENVELOPE_SCHEMA",
     "parameter_set_from_context",
+    "validate_envelope",
     "audit_metric",
     "EncryptedMaskSet",
     "encrypt_sensitive_features",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import Callable, List, Union
+from collections.abc import Callable
 
 import fairlearn.metrics as _fl
 
@@ -26,7 +26,7 @@ class _EncryptedDerivedMetric:
         *,
         metric: Callable[..., float],
         transform: str,
-        sample_param_names: List[str] | None,
+        sample_param_names: list[str] | None,
     ):
         if not callable(metric):
             raise ValueError("metric must be callable")
@@ -96,8 +96,8 @@ def make_derived_metric(
     *,
     metric: Callable[..., float],
     transform: str,
-    sample_param_names: List[str] | None = None,
-) -> Callable[..., Union[float, int]]:
+    sample_param_names: list[str] | None = None,
+) -> Callable[..., float | int]:
     """Encrypted-aware analogue of :func:`fairlearn.metrics.make_derived_metric`."""
     if sample_param_names is None:
         sample_param_names = ["sample_weight"]

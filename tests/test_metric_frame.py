@@ -1,21 +1,30 @@
 """Encrypted MetricFrame mirrors fairlearn.metrics.MetricFrame."""
 
+import fairlearn.metrics as fl
 import numpy as np
 import pytest
-
-import fairlearn.metrics as fl
 
 from fairlearn_fhe.metrics import MetricFrame
 
 
 def test_single_metric(small_dataset, encrypted_pred, tol):
     y_true, y_pred, sf = small_dataset
-    plain = fl.MetricFrame(metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf)
-    enc = MetricFrame(metrics=fl.selection_rate, y_true=y_true, y_pred=encrypted_pred, sensitive_features=sf)
+    plain = fl.MetricFrame(
+        metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf
+    )
+    enc = MetricFrame(
+        metrics=fl.selection_rate,
+        y_true=y_true,
+        y_pred=encrypted_pred,
+        sensitive_features=sf,
+    )
 
     # Per-group rates within tol.
     for label in plain.by_group.index:
-        assert abs(float(plain.by_group.loc[label]) - float(enc.by_group.loc[label].iloc[0])) < tol
+        assert (
+            abs(float(plain.by_group.loc[label]) - float(enc.by_group.loc[label].iloc[0]))
+            < tol
+        )
 
 
 def test_multi_metric(small_dataset, encrypted_pred, tol):
@@ -44,7 +53,9 @@ def test_difference_matches(small_dataset, encrypted_pred, tol):
 def test_fhe_alias_rejects_plaintext(small_dataset):
     y_true, y_pred, sf = small_dataset
     with pytest.raises(TypeError):
-        MetricFrame.fhe(metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf)
+        MetricFrame.fhe(
+            metrics=fl.selection_rate, y_true=y_true, y_pred=y_pred, sensitive_features=sf
+        )
 
 
 def test_unknown_metric_requires_optin(small_dataset, encrypted_pred):

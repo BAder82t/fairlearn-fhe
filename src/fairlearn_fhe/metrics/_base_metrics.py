@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
 import fairlearn.metrics as _fl
+import numpy as np
 
 from ..encrypted import EncryptedVector
 
@@ -78,25 +77,33 @@ def _conf_rates(y_true, y_pred_enc: EncryptedVector, sample_weight) -> dict:
 
 def true_positive_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> float:
     if not _is_encrypted(y_pred):
-        return _fl.true_positive_rate(y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label)
+        return _fl.true_positive_rate(
+            y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
+        )
     return _conf_rates(y_true, y_pred, sample_weight)["tpr"]
 
 
 def true_negative_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> float:
     if not _is_encrypted(y_pred):
-        return _fl.true_negative_rate(y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label)
+        return _fl.true_negative_rate(
+            y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
+        )
     return _conf_rates(y_true, y_pred, sample_weight)["tnr"]
 
 
 def false_positive_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> float:
     if not _is_encrypted(y_pred):
-        return _fl.false_positive_rate(y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label)
+        return _fl.false_positive_rate(
+            y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
+        )
     return _conf_rates(y_true, y_pred, sample_weight)["fpr"]
 
 
 def false_negative_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> float:
     if not _is_encrypted(y_pred):
-        return _fl.false_negative_rate(y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label)
+        return _fl.false_negative_rate(
+            y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
+        )
     return _conf_rates(y_true, y_pred, sample_weight)["fnr"]
 
 

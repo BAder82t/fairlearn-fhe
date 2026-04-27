@@ -11,10 +11,13 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from .context import CKKSContext
+
+ENVELOPE_SCHEMA = "fairlearn-fhe.metric-envelope.v1"
 
 
 @dataclass(frozen=True)
@@ -23,7 +26,7 @@ class ParameterSet:
     poly_modulus_degree: int
     security_bits: int
     multiplicative_depth: int
-    coeff_mod_bit_sizes: Tuple[int, ...]
+    coeff_mod_bit_sizes: tuple[int, ...]
     scaling_factor_bits: int
     backend_version: str = ""
 
@@ -32,6 +35,18 @@ class ParameterSet:
                           separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(body).hexdigest()
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> ParameterSet:
+        return cls(
+            backend=str(payload["backend"]),
+            poly_modulus_degree=int(payload["poly_modulus_degree"]),
+            security_bits=int(payload["security_bits"]),
+            multiplicative_depth=int(payload["multiplicative_depth"]),
+            coeff_mod_bit_sizes=tuple(int(v) for v in payload["coeff_mod_bit_sizes"]),
+            scaling_factor_bits=int(payload["scaling_factor_bits"]),
+            backend_version=str(payload.get("backend_version", "")),
+        )
+
 
 @dataclass
 class MetricEnvelope:
@@ -39,13 +54,15 @@ class MetricEnvelope:
     value: float
     parameter_set: ParameterSet
     observed_depth: int
-    op_counts: Dict[str, int]
+    op_counts: dict[str, int]
     n_samples: int
     n_groups: int
+    schema_version: str = ENVELOPE_SCHEMA
     timestamp: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": self.schema_version,
             "metric_name": self.metric_name,
             "value": float(self.value),
             "parameter_set": asdict(self.parameter_set),
@@ -60,6 +77,113 @@ class MetricEnvelope:
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), sort_keys=True, indent=2)
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> MetricEnvelope:
+        return cls(
+            metric_name=str(payload["metric_name"]),
+            value=float(payload["value"]),
+            parameter_set=ParameterSet.from_dict(payload["parameter_set"]),
+            observed_depth=int(payload["observed_depth"]),
+            op_counts={str(k): int(v) for k, v in payload["op_counts"].items()},
+            n_samples=int(payload["n_samples"]),
+            n_groups=int(payload["n_groups"]),
+            schema_version=str(payload.get("schema_version", ENVELOPE_SCHEMA)),
+            timestamp=float(payload["timestamp"]),
+        )
+
+    @classmethod
+    def from_json(cls, body: str) -> MetricEnvelope:
+        return cls.from_dict(json.loads(body))
+
+
+def validate_envelope(
+    payload: Mapping[str, Any] | MetricEnvelope,
+    *,
+    allowed_metrics: Sequence[str] | None = None,
+    max_observed_depth: int | None = None,
+) -> list[str]:
+    """Return validation errors for an audit-envelope payload.
+
+    An empty list means the envelope is structurally valid, the
+    ``parameter_set_hash`` matches the embedded parameter set, and the
+    observed depth is within the declared multiplicative-depth budget.
+    This is intentionally dependency-free so it can run in lightweight
+    verifier tooling.
+    """
+    data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
+    errors: list[str] = []
+
+    required = {
+        "schema_version",
+        "metric_name",
+        "value",
+        "parameter_set",
+        "parameter_set_hash",
+        "observed_depth",
+        "op_counts",
+        "n_samples",
+        "n_groups",
+        "timestamp",
+    }
+    missing = sorted(required - data.keys())
+    if missing:
+        return [f"missing required field: {name}" for name in missing]
+
+    if data["schema_version"] != ENVELOPE_SCHEMA:
+        errors.append(f"unsupported schema_version {data['schema_version']!r}")
+
+    try:
+        ps = ParameterSet.from_dict(data["parameter_set"])
+    except (KeyError, TypeError, ValueError) as exc:
+        errors.append(f"invalid parameter_set: {exc}")
+        ps = None
+
+    if ps is not None and data["parameter_set_hash"] != ps.hash():
+        errors.append("parameter_set_hash does not match parameter_set")
+
+    if allowed_metrics is not None and data["metric_name"] not in allowed_metrics:
+        errors.append(f"metric_name {data['metric_name']!r} is not allowed")
+
+    try:
+        observed_depth = int(data["observed_depth"])
+        if observed_depth < 0:
+            errors.append("observed_depth must be non-negative")
+        if ps is not None and observed_depth > ps.multiplicative_depth:
+            errors.append("observed_depth exceeds parameter_set multiplicative_depth")
+        if max_observed_depth is not None and observed_depth > max_observed_depth:
+            errors.append("observed_depth exceeds verifier maximum")
+    except (TypeError, ValueError):
+        errors.append("observed_depth must be an integer")
+
+    for field_name in ("n_samples", "n_groups"):
+        try:
+            if int(data[field_name]) < 1:
+                errors.append(f"{field_name} must be positive")
+        except (TypeError, ValueError):
+            errors.append(f"{field_name} must be an integer")
+
+    if not isinstance(data["op_counts"], Mapping):
+        errors.append("op_counts must be a mapping")
+    else:
+        for name, value in data["op_counts"].items():
+            try:
+                if int(value) < 0:
+                    errors.append(f"op_counts[{name!r}] must be non-negative")
+            except (TypeError, ValueError):
+                errors.append(f"op_counts[{name!r}] must be an integer")
+
+    try:
+        float(data["value"])
+    except (TypeError, ValueError):
+        errors.append("value must be numeric")
+
+    try:
+        float(data["timestamp"])
+    except (TypeError, ValueError):
+        errors.append("timestamp must be numeric")
+
+    return errors
+
 
 def parameter_set_from_context(ctx: CKKSContext, *, depth: int = 6) -> ParameterSet:
     backend_label = ctx.backend
@@ -70,7 +194,7 @@ def parameter_set_from_context(ctx: CKKSContext, *, depth: int = 6) -> Parameter
             backend_version = getattr(_ts, "__version__", "")
         except Exception:
             pass
-        coeff: Tuple[int, ...] = (60, 40, 40, 40, 40, 40, 40, 60)
+        coeff: tuple[int, ...] = (60, 40, 40, 40, 40, 40, 40, 60)
     else:  # openfhe
         try:
             import openfhe as _of

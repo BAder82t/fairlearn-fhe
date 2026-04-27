@@ -13,8 +13,6 @@ metric functions branch only at the top level.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Tuple, Union
-
 import numpy as np
 
 from ._groups import EncryptedMaskSet
@@ -22,7 +20,7 @@ from .encrypted import EncryptedVector
 
 _EPS = 1e-12
 
-MaskLike = Union[Dict[object, np.ndarray], EncryptedMaskSet]
+MaskLike = dict[object, np.ndarray] | EncryptedMaskSet
 
 
 def _safe_div(num: float, den: float) -> float:
@@ -75,13 +73,13 @@ def selection_rate_per_group(
     *,
     pos_label: float = 1.0,
     sample_weight: np.ndarray | None = None,
-) -> Dict[object, float]:
+) -> dict[object, float]:
     if pos_label != 1 and pos_label != 1.0:
         raise NotImplementedError(
             "Encrypted selection_rate currently requires pos_label=1; "
             "encode predictions as {0, 1} or pre-translate before encrypting."
         )
-    out: Dict[object, float] = {}
+    out: dict[object, float] = {}
     for label, mask_obj, denom, is_enc in _iter_masks(masks, sample_weight):
         extra = sample_weight if (is_enc and sample_weight is not None) else None
         numer = _sum_under_mask(y_pred_enc, mask_obj, is_enc, extra_pt=extra)
@@ -94,8 +92,8 @@ def mean_prediction_per_group(
     masks: MaskLike,
     *,
     sample_weight: np.ndarray | None = None,
-) -> Dict[object, float]:
-    out: Dict[object, float] = {}
+) -> dict[object, float]:
+    out: dict[object, float] = {}
     for label, mask_obj, denom, is_enc in _iter_masks(masks, sample_weight):
         extra = sample_weight if (is_enc and sample_weight is not None) else None
         numer = _sum_under_mask(y_pred_enc, mask_obj, is_enc, extra_pt=extra)
@@ -109,9 +107,9 @@ def confusion_rates_per_group(
     masks: MaskLike,
     *,
     sample_weight: np.ndarray | None = None,
-    positives_per_group: Dict[object, float] | None = None,
-    negatives_per_group: Dict[object, float] | None = None,
-) -> Dict[object, Dict[str, float]]:
+    positives_per_group: dict[object, float] | None = None,
+    negatives_per_group: dict[object, float] | None = None,
+) -> dict[object, dict[str, float]]:
     """Per-group {tpr, fpr, tnr, fnr}.
 
     With encrypted masks the auditor must pre-supply the per-group
@@ -123,11 +121,10 @@ def confusion_rates_per_group(
     """
     y = np.asarray(y_true, dtype=float)
     sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)
-    is_enc_set = isinstance(masks, EncryptedMaskSet)
 
-    out: Dict[object, Dict[str, float]] = {}
+    out: dict[object, dict[str, float]] = {}
     iter_masks = list(_iter_masks(masks, sw))
-    for label, mask_obj, denom, is_enc in iter_masks:
+    for label, mask_obj, _denom, is_enc in iter_masks:
         if is_enc:
             n_pos = (positives_per_group or {}).get(label)
             n_neg = (negatives_per_group or {}).get(label)
@@ -165,8 +162,8 @@ def positive_negative_counts(y_true, masks: MaskLike, sample_weight=None):
     """
     y = np.asarray(y_true, dtype=float)
     sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)
-    pos: Dict[object, float] = {}
-    neg: Dict[object, float] = {}
+    pos: dict[object, float] = {}
+    neg: dict[object, float] = {}
     if isinstance(masks, EncryptedMaskSet):
         # Counts depend on the plaintext masks pre-encryption; the
         # caller is responsible for keeping that record. Without it we
@@ -183,7 +180,7 @@ def positive_negative_counts(y_true, masks: MaskLike, sample_weight=None):
 
 
 def aggregate_difference(
-    values: List[float],
+    values: list[float],
     *,
     method: str = "between_groups",
     overall: float | None = None,
@@ -199,7 +196,7 @@ def aggregate_difference(
 
 
 def aggregate_ratio(
-    values: List[float],
+    values: list[float],
     *,
     method: str = "between_groups",
     overall: float | None = None,

@@ -2,9 +2,13 @@
 
 The metric envelope packages a value with the parameter set, observed depth, and op counts so a regulator can verify the encrypted execution against the declared spec.
 
+::: fairlearn_fhe.envelope.ENVELOPE_SCHEMA
+
 ::: fairlearn_fhe.envelope.MetricEnvelope
 
 ::: fairlearn_fhe.envelope.ParameterSet
+
+::: fairlearn_fhe.envelope.validate_envelope
 
 ::: fairlearn_fhe.envelope.parameter_set_from_context
 

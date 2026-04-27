@@ -66,6 +66,7 @@ print(env.to_json())
 
 ```json
 {
+  "schema_version": "fairlearn-fhe.metric-envelope.v1",
   "metric_name": "demographic_parity_difference",
   "value": 0.089009,
   "parameter_set": {"backend": "tenseal-ckks", "poly_modulus_degree": 16384, ...},
@@ -75,6 +76,16 @@ print(env.to_json())
   "n_samples": 200,
   "n_groups": 2
 }
+```
+
+Verifier-side code can reject malformed or tampered envelopes without importing
+an FHE backend:
+
+```python
+from fairlearn_fhe import validate_envelope
+
+errors = validate_envelope(env.to_dict())
+assert errors == []
 ```
 
 ## Encrypted sensitive features (Mode B)

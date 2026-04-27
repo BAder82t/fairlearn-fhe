@@ -2,18 +2,16 @@
 flow matching plaintext Fairlearn within CKKS noise tolerance.
 """
 
-import numpy as np
+import fairlearn.metrics as fl
 import pytest
 
-import fairlearn.metrics as fl
-
-from fairlearn_fhe import build_context, encrypt, encrypt_sensitive_features, EncryptedMaskSet
+from fairlearn_fhe import EncryptedMaskSet, encrypt_sensitive_features
 from fairlearn_fhe.metrics import (
     MetricFrame,
     demographic_parity_difference,
     demographic_parity_ratio,
-    equalized_odds_difference,
     equal_opportunity_difference,
+    equalized_odds_difference,
 )
 
 

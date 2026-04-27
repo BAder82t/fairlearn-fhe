@@ -2,19 +2,16 @@
 sample weights, empty group, all-same-class.
 """
 
+import fairlearn.metrics as fl
 import numpy as np
 import pandas as pd
 import pytest
 
-import fairlearn.metrics as fl
-
-from fairlearn_fhe import build_context, encrypt
+from fairlearn_fhe import encrypt
 from fairlearn_fhe.metrics import (
-    demographic_parity_difference,
-    equalized_odds_difference,
-    selection_rate,
-    true_positive_rate,
     MetricFrame,
+    demographic_parity_difference,
+    selection_rate,
 )
 
 
@@ -108,7 +105,6 @@ def test_floating_predictions(ctx, tol):
     n = 200
     y_true = rng.integers(0, 2, size=n).astype(float)
     y_pred = rng.uniform(0.0, 1.0, size=n)
-    sf = rng.choice(["A", "B"], size=n)
     enc = encrypt(ctx, y_pred)
     # Use mean_prediction for soft preds (selection_rate plaintext requires {0,1}).
     from fairlearn_fhe.metrics import mean_prediction

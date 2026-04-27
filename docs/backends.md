@@ -26,7 +26,7 @@ set_default_backend("openfhe")
 | Latency | faster per metric | ~2× TenSEAL |
 | Precision | ~1e-7 abs err | ~1e-10 abs err |
 | Bootstrapping | no | yes (not used by fairness metrics) |
-| Maturity | research-grade | production-grade |
+| Packaging | pip-installable default | native dependency, opt-in |
 
 ## Benchmark (n=1024, 3 sensitive groups, depth-6 circuit)
 
@@ -35,7 +35,8 @@ set_default_backend("openfhe")
 | tenseal | 888 ms | 7.5 ms | 284 ms | 1e-7 | 562 ms | 2e-7 |
 | openfhe | 321 ms | 13.5 ms | 505 ms | 2e-10 | 1015 ms | 4e-11 |
 
-OpenFHE delivers ~1000× higher precision; TenSEAL is ~2× faster and ships via pip on every platform.
+On this benchmark, OpenFHE gives lower numeric error; TenSEAL is faster and
+ships via pip on every supported platform.
 
 ## Backend-specific notes
 

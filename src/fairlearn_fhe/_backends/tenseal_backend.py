@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Sequence
 
 import numpy as np
 
@@ -12,7 +12,7 @@ NAME = "tenseal-ckks"
 
 @dataclass
 class TenSEALContext:
-    context: "object"
+    context: object
     scale: float
     poly_modulus_degree: int
     n_slots: int
@@ -50,7 +50,7 @@ def encrypt(ctx: TenSEALContext, values: Sequence[float]):
     return ts.ckks_vector(ctx.context, vals)
 
 
-def decrypt(ct, n: int) -> List[float]:
+def decrypt(ct, n: int) -> list[float]:
     return list(ct.decrypt())[:n]
 
 

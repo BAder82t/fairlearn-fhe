@@ -1,15 +1,16 @@
 """Encrypted base-metric outputs match plaintext Fairlearn within CKKS noise."""
 
-import numpy as np
+import fairlearn.metrics as fl
 import pytest
 
-import fairlearn.metrics as fl
-
 from fairlearn_fhe.metrics import (
-    selection_rate, mean_prediction,
-    true_positive_rate, true_negative_rate,
-    false_positive_rate, false_negative_rate,
     count,
+    false_negative_rate,
+    false_positive_rate,
+    mean_prediction,
+    selection_rate,
+    true_negative_rate,
+    true_positive_rate,
 )
 
 

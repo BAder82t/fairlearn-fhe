@@ -18,6 +18,7 @@ Run checks before opening a pull request:
 
 ```bash
 python -m pytest
+python -m ruff check .
 python -m mkdocs build --strict
 python -m build
 python -m twine check dist/*
@@ -30,4 +31,3 @@ python -m twine check dist/*
 - Add tests for every metric, backend, or envelope behavior change.
 - Avoid cryptographic-core changes; this package builds application, audit, and
   developer-experience layers on top of TenSEAL and OpenFHE.
-

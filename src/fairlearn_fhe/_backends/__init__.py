@@ -3,7 +3,7 @@
 Two backends share an identical surface:
 
 - ``tenseal`` (default) — pip-installable; CKKS via Microsoft SEAL.
-- ``openfhe`` — opt-in; production-grade CKKS via OpenFHE-Python.
+- ``openfhe`` — opt-in; native CKKS via OpenFHE-Python.
 
 A backend exposes:
 

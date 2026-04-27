@@ -7,16 +7,13 @@ to log alongside the parameter-set hash.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
-import numpy as np
-
+from . import metrics as fhe_metrics
+from ._groups import EncryptedMaskSet, group_masks
 from .context import CKKSContext, default_context
 from .encrypted import EncryptedVector, encrypt, reset_op_counters, snapshot_op_counters
 from .envelope import MetricEnvelope, parameter_set_from_context
-from . import metrics as fhe_metrics
-from ._groups import EncryptedMaskSet, group_masks
-
 
 _BASE_METRIC_FNS = {
     "selection_rate": fhe_metrics.selection_rate,

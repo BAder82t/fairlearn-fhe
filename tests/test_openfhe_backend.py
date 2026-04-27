@@ -3,22 +3,21 @@
 Skipped if openfhe-python is not importable.
 """
 
+import fairlearn.metrics as fl
 import numpy as np
 import pytest
-
-import fairlearn.metrics as fl
 
 pytest.importorskip("openfhe")
 
 from fairlearn_fhe import build_context, encrypt
 from fairlearn_fhe.metrics import (
-    selection_rate,
-    true_positive_rate,
-    false_positive_rate,
     demographic_parity_difference,
     demographic_parity_ratio,
-    equalized_odds_difference,
     equal_opportunity_difference,
+    equalized_odds_difference,
+    false_positive_rate,
+    selection_rate,
+    true_positive_rate,
 )
 
 

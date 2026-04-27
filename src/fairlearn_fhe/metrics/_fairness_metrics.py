@@ -10,11 +10,8 @@ from __future__ import annotations
 from typing import Literal
 
 import fairlearn.metrics as _fl
-
 import numpy as np
 
-from ..encrypted import EncryptedVector
-from .._groups import EncryptedMaskSet, group_masks
 from .._circuits import (
     aggregate_difference,
     aggregate_ratio,
@@ -22,6 +19,8 @@ from .._circuits import (
     positive_negative_counts,
     selection_rate_per_group,
 )
+from .._groups import EncryptedMaskSet, group_masks
+from ..encrypted import EncryptedVector
 
 
 def _all_ones_mask(n: int) -> dict:
@@ -43,7 +42,9 @@ def _pos_neg_counts(sensitive_features, y_true, sample_weight):
     """
     if isinstance(sensitive_features, EncryptedMaskSet):
         # Auditor-public metadata stamped on the EncryptedMaskSet.
-        if not hasattr(sensitive_features, "positives") or not hasattr(sensitive_features, "negatives"):
+        if not hasattr(sensitive_features, "positives") or not hasattr(
+            sensitive_features, "negatives"
+        ):
             raise ValueError(
                 "EncryptedMaskSet does not carry positive/negative counts; "
                 "use fairlearn_fhe.attach_label_counts(mask_set, y_true, sample_weight)."
@@ -147,10 +148,16 @@ def equalized_odds_difference(
         y_true, y_pred, masks, sample_weight=sw,
         positives_per_group=pos, negatives_per_group=neg,
     )
-    overall = confusion_rates_per_group(y_true, y_pred, _all_ones_mask(y_pred.n), sample_weight=sw)
+    overall = confusion_rates_per_group(
+        y_true, y_pred, _all_ones_mask(y_pred.n), sample_weight=sw
+    )
     o = next(iter(overall.values()))
-    tpr_diff = aggregate_difference([r["tpr"] for r in rates.values()], method=method, overall=o["tpr"])
-    fpr_diff = aggregate_difference([r["fpr"] for r in rates.values()], method=method, overall=o["fpr"])
+    tpr_diff = aggregate_difference(
+        [r["tpr"] for r in rates.values()], method=method, overall=o["tpr"]
+    )
+    fpr_diff = aggregate_difference(
+        [r["fpr"] for r in rates.values()], method=method, overall=o["fpr"]
+    )
     return max(tpr_diff, fpr_diff) if agg == "worst_case" else 0.5 * (tpr_diff + fpr_diff)
 
 
