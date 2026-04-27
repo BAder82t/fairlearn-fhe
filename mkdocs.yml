@@ -1,0 +1,76 @@
+site_name: fairlearn-fhe
+site_description: Drop-in encrypted Fairlearn metrics over CKKS.
+site_url: https://vaultbytes.github.io/fairlearn-fhe/
+repo_url: https://github.com/Vaultbytes/fairlearn-fhe
+repo_name: Vaultbytes/fairlearn-fhe
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_source: false
+            docstring_style: numpy
+            members_order: source
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Trust models: trust-models.md
+  - Backends: backends.md
+  - Metrics catalogue: metrics.md
+  - API reference:
+      - Context & encryption: api/context.md
+      - Metrics: api/metrics.md
+      - MetricFrame: api/metric-frame.md
+      - Envelope: api/envelope.md
+  - Benchmarks: benchmarks.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Vaultbytes/fairlearn-fhe
