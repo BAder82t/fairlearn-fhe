@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.1
+
+Patch release. Test-coverage closeout, no API changes.
+
+### Tests
+
+- 232 tests pass; line coverage rises from 86% to **94%**.
+- New `tests/test_v0_2_1_coverage.py` covers Mode B (encrypted-mask)
+  paths for the v0.2 metric ports (per-rate diff/ratio family,
+  scoring disaggregations, regression disaggregations), the plaintext
+  fallback when upstream Fairlearn is missing the new helpers
+  (`equal_opportunity_difference` / `_ratio` and friends), context
+  lifecycle (`set_default_context`, `reset_default_context`,
+  `make_evaluator_context` for TenSEAL), CLI residuals (stdin,
+  oversize, missing public key, legacy `metric` envelope key), audit
+  edge paths (small-group warning, no-sensitive-features label,
+  encrypted-sensitive-features label), and every
+  `validate_envelope` negative branch.
+- Pinned the OpenFHE `make_evaluator_context` brokenness as an
+  expected `TypeError` (`KeyPair` is unpickleable); a future fix that
+  introduces a wrapper around the OpenFHE `KeyPair` should flip the
+  test from passing to failing.
+
+### Notes
+
+- Remaining 6% coverage gap is scattered defensive branches and
+  OpenFHE backend paths that need the `KeyPair` workaround above.
+- No production code changed; existing imports continue to work.
+
 ## 0.2.0
 
 Feature release: extended metric coverage, OpenFHE noise-flooding
