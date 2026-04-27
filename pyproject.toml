@@ -8,13 +8,11 @@ version = "0.1.0"
 description = "Drop-in encrypted (CKKS) Fairlearn metrics. Same API surface; ciphertext arithmetic via TenSEAL."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [
-  { name = "VaultBytes Innovations Ltd", email = "b@vaultbytes.com" },
   { name = "Bader Alissaei", email = "b@vaultbytes.com" },
 ]
 classifiers = [
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Topic :: Security :: Cryptography",
   "Topic :: Scientific/Engineering",
@@ -43,8 +41,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Vaultbytes/fairlearn-fhe"
-Issues  = "https://github.com/Vaultbytes/fairlearn-fhe/issues"
+Homepage = "https://github.com/BAder82t/fairlearn-fhe"
+Repository = "https://github.com/BAder82t/fairlearn-fhe"
+Issues  = "https://github.com/BAder82t/fairlearn-fhe/issues"
+Documentation = "https://bader82t.github.io/fairlearn-fhe/"
 
 [tool.setuptools.packages.find]
 where = ["src"]

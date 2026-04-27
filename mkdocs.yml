@@ -1,8 +1,8 @@
 site_name: fairlearn-fhe
 site_description: Drop-in encrypted Fairlearn metrics over CKKS.
-site_url: https://vaultbytes.github.io/fairlearn-fhe/
-repo_url: https://github.com/Vaultbytes/fairlearn-fhe
-repo_name: Vaultbytes/fairlearn-fhe
+site_url: https://bader82t.github.io/fairlearn-fhe/
+repo_url: https://github.com/BAder82t/fairlearn-fhe
+repo_name: BAder82t/fairlearn-fhe
 
 theme:
   name: material
@@ -73,4 +73,4 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/Vaultbytes/fairlearn-fhe
+      link: https://github.com/BAder82t/fairlearn-fhe

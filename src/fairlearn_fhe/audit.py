@@ -43,7 +43,7 @@ def audit_metric(
     ctx: CKKSContext | None = None,
     **kwargs: Any,
 ) -> MetricEnvelope:
-    """Run ``metric_name`` under encryption and return a sealed envelope.
+    """Run ``metric_name`` under encryption and return an audit envelope.
 
     ``y_pred`` may be plaintext (encrypted internally) or an
     :class:`EncryptedVector` (used as-is).

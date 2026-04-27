@@ -2,6 +2,11 @@
 
 Drop-in encrypted Fairlearn metrics. Identical API surface; ciphertext arithmetic over CKKS via TenSEAL.
 
+`fairlearn-fhe` is an early-stage VaultBytes startup project maintained from
+Bader Alissaei's GitHub namespace: <https://github.com/BAder82t/fairlearn-fhe>.
+The personal namespace is intentional while the project is pre-company-org and
+pre-certification.
+
 ```python
 # plaintext
 from fairlearn.metrics import demographic_parity_difference

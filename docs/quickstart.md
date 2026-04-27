@@ -49,9 +49,9 @@ print("difference:", mf.difference())
 print("ratio:     ", mf.ratio())
 ```
 
-## Sealed audit envelope
+## Audit envelope
 
-`audit_metric` wraps the call and returns a sealed envelope with parameter-set hash, observed depth, and op counts.
+`audit_metric` wraps the call and returns an audit envelope with parameter-set hash, observed depth, and op counts. The envelope is structured for logging and verifier tooling; it is not signed by default.
 
 ```python
 from fairlearn_fhe import audit_metric
