@@ -45,3 +45,8 @@ def get_backend(name: BackendName | None = None):
         from . import openfhe_backend as mod
         return mod
     raise ValueError(f"unknown backend {name!r}")
+
+
+def list_backends() -> list[str]:
+    """Return every backend name the dispatcher knows about."""
+    return ["tenseal", "openfhe"]

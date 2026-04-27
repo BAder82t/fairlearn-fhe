@@ -32,6 +32,34 @@ from ._fairness_metrics import (
 )
 from ._make_derived_metric import make_derived_metric
 from ._metric_frame import EncryptedMetricFrame, MetricFrame
+from ._per_rate_metrics import (
+    false_negative_rate_difference,
+    false_negative_rate_ratio,
+    false_positive_rate_difference,
+    false_positive_rate_ratio,
+    selection_rate_difference,
+    selection_rate_ratio,
+    true_negative_rate_difference,
+    true_negative_rate_ratio,
+    true_positive_rate_difference,
+    true_positive_rate_ratio,
+)
+from ._regression_metrics import (
+    mean_absolute_error_group_max,
+    mean_squared_error_group_max,
+    r2_score_group_min,
+)
+from ._scoring_metrics import (
+    accuracy_score_difference,
+    accuracy_score_group_min,
+    balanced_accuracy_score_group_min,
+    f1_score_group_min,
+    precision_score_group_min,
+    recall_score_group_min,
+    zero_one_loss_difference,
+    zero_one_loss_group_max,
+    zero_one_loss_ratio,
+)
 
 __all__ = [
     "MetricFrame",
@@ -50,4 +78,29 @@ __all__ = [
     "equalized_odds_ratio",
     "equal_opportunity_difference",
     "equal_opportunity_ratio",
+    # per-rate difference/ratio family
+    "selection_rate_difference",
+    "selection_rate_ratio",
+    "true_positive_rate_difference",
+    "true_positive_rate_ratio",
+    "true_negative_rate_difference",
+    "true_negative_rate_ratio",
+    "false_positive_rate_difference",
+    "false_positive_rate_ratio",
+    "false_negative_rate_difference",
+    "false_negative_rate_ratio",
+    # scoring metrics
+    "accuracy_score_difference",
+    "accuracy_score_group_min",
+    "balanced_accuracy_score_group_min",
+    "precision_score_group_min",
+    "recall_score_group_min",
+    "f1_score_group_min",
+    "zero_one_loss_difference",
+    "zero_one_loss_group_max",
+    "zero_one_loss_ratio",
+    # regression metrics
+    "mean_absolute_error_group_max",
+    "mean_squared_error_group_max",
+    "r2_score_group_min",
 ]

@@ -22,6 +22,105 @@ ENVELOPE_SCHEMA = "fairlearn-fhe.metric-envelope.v1"
 SIGNATURE_ALGORITHM = "Ed25519"
 
 
+# JSON Schema (Draft 2020-12) describing the structure of a serialised
+# :class:`MetricEnvelope`. ``ENVELOPE_SCHEMA`` (the version tag string)
+# is included as the ``$id`` for stable referencing across releases.
+ENVELOPE_JSON_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": ENVELOPE_SCHEMA,
+    "title": "fairlearn-fhe metric audit envelope",
+    "description": (
+        "JSON Schema describing the audit envelope produced by "
+        "fairlearn_fhe.audit_metric and friends. Auditors validate "
+        "envelopes against this schema before consuming the verdict."
+    ),
+    "type": "object",
+    "required": [
+        "schema_version",
+        "metric_name",
+        "value",
+        "parameter_set",
+        "parameter_set_hash",
+        "observed_depth",
+        "op_counts",
+        "n_samples",
+        "n_groups",
+    ],
+    "properties": {
+        "schema_version": {"type": "string", "const": ENVELOPE_SCHEMA},
+        "metric_name": {"type": "string", "minLength": 1},
+        "value": {"type": "number"},
+        "parameter_set": {
+            "type": "object",
+            "required": [
+                "backend",
+                "poly_modulus_degree",
+                "security_bits",
+                "multiplicative_depth",
+                "coeff_mod_bit_sizes",
+                "scaling_factor_bits",
+            ],
+            "properties": {
+                "backend": {"type": "string", "minLength": 1},
+                "poly_modulus_degree": {"type": "integer", "minimum": 1},
+                "security_bits": {"type": "integer", "minimum": 0},
+                "multiplicative_depth": {"type": "integer", "minimum": 0},
+                "coeff_mod_bit_sizes": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 1},
+                },
+                "scaling_factor_bits": {"type": "integer", "minimum": 1},
+                "backend_version": {"type": "string"},
+            },
+        },
+        "parameter_set_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 hex digest of the canonical parameter_set",
+        },
+        "observed_depth": {"type": "integer", "minimum": 0},
+        "op_counts": {
+            "type": "object",
+            "additionalProperties": {"type": "integer", "minimum": 0},
+        },
+        "n_samples": {"type": "integer", "minimum": 0},
+        "n_groups": {"type": "integer", "minimum": 0},
+        "metric_kwargs": {"type": "object"},
+        "trust_model": {"type": "string"},
+        "input_hashes": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+        },
+        "timestamp_unix": {"type": "number", "minimum": 0},
+        "timestamp": {"type": "number", "minimum": 0},
+        "signature": {
+            "type": "object",
+            "required": ["algorithm", "signature_b64"],
+            "properties": {
+                "algorithm": {"type": "string", "const": SIGNATURE_ALGORITHM},
+                "signature_b64": {"type": "string", "minLength": 1},
+                "public_key_id": {"type": "string"},
+            },
+        },
+    },
+    "additionalProperties": True,
+}
+
+
+def envelope_json_schema() -> dict[str, Any]:
+    """Return a deep-copy of :data:`ENVELOPE_JSON_SCHEMA`.
+
+    Convenience helper so callers can mutate the result without
+    accidentally affecting the package-level default.
+    """
+    import copy
+
+    return copy.deepcopy(ENVELOPE_JSON_SCHEMA)
+
+
 @dataclass(frozen=True)
 class ParameterSet:
     backend: str

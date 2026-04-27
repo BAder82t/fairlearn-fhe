@@ -26,6 +26,7 @@ class OpenFHEContext:
     poly_modulus_degree: int
     n_slots: int
     backend: str = NAME
+    noise_flooding: bool = False
 
 
 def _features():
@@ -38,11 +39,60 @@ def _features():
     ]
 
 
+_NATIVE_FLOODING_LABELS = frozenset(
+    {
+        "openfhe-noise-flooding-decrypt",
+        "noise-flooding",
+    }
+)
+
+
+def _normalize_flooding_label(value):
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "noise-flooding" if value else ""
+    return (
+        str(value)
+        .strip()
+        .lower()
+        .replace("_", "-")
+        .replace(" ", "-")
+    )
+
+
+def _apply_native_noise_flooding(fhe_module, params, label: str) -> bool:
+    """Enable OpenFHE NOISE_FLOODING_DECRYPT if requested and supported.
+
+    Returns True iff the native mitigation was wired into the params.
+    Raises ``RuntimeError`` when the linked openfhe-python lacks the
+    API surface — surfacing a clear error is preferable to silently
+    building a non-flooded context.
+    """
+    if label not in _NATIVE_FLOODING_LABELS:
+        return False
+    set_exec = getattr(params, "SetExecutionMode", None)
+    set_decrypt = getattr(params, "SetDecryptionNoiseMode", None)
+    exec_mode = getattr(fhe_module, "EXEC_NOISE_FLOODING", None)
+    decrypt_mode = getattr(fhe_module, "NOISE_FLOODING_DECRYPT", None)
+    if not (set_exec and set_decrypt and exec_mode is not None and decrypt_mode is not None):
+        raise RuntimeError(
+            "params['noise_flooding'] requested OpenFHE NOISE_FLOODING_DECRYPT "
+            "but the linked openfhe-python build does not expose "
+            "SetExecutionMode / SetDecryptionNoiseMode. Upgrade to a build "
+            "that supports the EXEC_NOISE_FLOODING execution mode."
+        )
+    set_exec(exec_mode)
+    set_decrypt(decrypt_mode)
+    return True
+
+
 def build_context(
     *,
     multiplicative_depth: int = 6,
     scaling_mod_size: int = 40,
     batch_size: int = 1024,
+    noise_flooding=None,
 ) -> OpenFHEContext:
     import openfhe as fhe
 
@@ -50,6 +100,9 @@ def build_context(
     params.SetMultiplicativeDepth(multiplicative_depth)
     params.SetScalingModSize(scaling_mod_size)
     params.SetBatchSize(batch_size)
+    flooding_enabled = _apply_native_noise_flooding(
+        fhe, params, _normalize_flooding_label(noise_flooding)
+    )
 
     cc = fhe.GenCryptoContext(params)
     for f in _features():
@@ -74,6 +127,7 @@ def build_context(
         scale=float(2 ** scaling_mod_size),
         poly_modulus_degree=int(cc.GetRingDimension()),
         n_slots=int(batch_size),
+        noise_flooding=flooding_enabled,
     )
 
 

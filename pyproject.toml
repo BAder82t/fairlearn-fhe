@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fairlearn-fhe"
-version = "0.1.0"
+version = "0.2.0"
 description = "Drop-in encrypted (CKKS) Fairlearn metrics. Same API surface; ciphertext arithmetic via TenSEAL."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -56,7 +56,8 @@ Issues  = "https://github.com/BAder82t/fairlearn-fhe/issues"
 Documentation = "https://bader82t.github.io/fairlearn-fhe/"
 
 [project.scripts]
-fairlearn-fhe-verify = "fairlearn_fhe.cli:main"
+fairlearn-fhe = "fairlearn_fhe.cli:main"
+fairlearn-fhe-verify = "fairlearn_fhe.cli:main_verify_legacy"
 
 [tool.setuptools.packages.find]
 where = ["src"]

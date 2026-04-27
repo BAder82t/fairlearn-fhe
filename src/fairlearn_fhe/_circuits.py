@@ -92,16 +92,22 @@ def selection_rate_per_group(
     pos_label: float = 1.0,
     sample_weight: np.ndarray | None = None,
 ) -> dict[object, float]:
-    if pos_label != 1 and pos_label != 1.0:
+    if pos_label not in (0, 0.0, 1, 1.0):
         raise NotImplementedError(
-            "Encrypted selection_rate currently requires pos_label=1; "
-            "encode predictions as {0, 1} or pre-translate before encrypting."
+            "Encrypted selection_rate supports pos_label ∈ {0, 1} (binary "
+            f"{{0, 1}}-encoded predictions); got {pos_label!r}."
         )
     out: dict[object, float] = {}
     for label, mask_obj, denom, is_enc in _iter_masks(masks, sample_weight):
         extra = sample_weight if (is_enc and sample_weight is not None) else None
         numer = _sum_under_mask(y_pred_enc, mask_obj, is_enc, extra_pt=extra)
-        out[label] = _safe_div(numer, denom)
+        rate = _safe_div(numer, denom)
+        # pos_label=0 → rate of (y_pred == 0) = 1 - rate, computed in the
+        # plaintext post-processing layer so the ciphertext circuit stays
+        # depth-1.
+        if pos_label in (0, 0.0):
+            rate = 1.0 - rate
+        out[label] = rate
     return out
 
 

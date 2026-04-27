@@ -135,6 +135,7 @@ def build_context(
     scale_bits: int = 40,
     coeff_mod_bit_sizes: Sequence[int] | None = None,
     batch_size: int | None = None,
+    noise_flooding=None,
 ) -> CKKSContext:
     """Build a CKKS context for the chosen backend.
 
@@ -142,6 +143,13 @@ def build_context(
     security. For ``backend="openfhe"`` the ``coeff_mod_bit_sizes``
     argument is ignored (OpenFHE chooses the chain itself); pass
     ``batch_size`` to control the number of plaintext slots.
+
+    ``noise_flooding`` enables decrypt-time noise flooding on backends
+    that support it. Pass either ``True`` or one of the recognized
+    strings (``"openfhe-NOISE_FLOODING_DECRYPT"``, ``"noise-flooding"``).
+    Currently honoured by the OpenFHE backend only; TenSEAL ignores
+    the flag because TenSEAL/SEAL has no NOISE_FLOODING_DECRYPT
+    execution mode at the time of this release.
     """
     backend_name: BackendName = backend or get_default_backend()
     mod = get_backend(backend_name)
@@ -166,6 +174,7 @@ def build_context(
             multiplicative_depth=6,
             scaling_mod_size=scale_bits,
             batch_size=bs,
+            noise_flooding=noise_flooding,
         )
         return CKKSContext(
             backend_module=mod,

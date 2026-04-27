@@ -33,16 +33,25 @@ def _safe_div(num: float, den: float) -> float:
 def selection_rate(y_true, y_pred, *, pos_label: Any = 1, sample_weight=None) -> float:
     if not _is_encrypted(y_pred):
         return _fl.selection_rate(y_true, y_pred, pos_label=pos_label, sample_weight=sample_weight)
-    if pos_label not in (1, 1.0):
+    if pos_label not in (0, 0.0, 1, 1.0):
+        # Encrypted selection_rate is well-defined only for binary {0,1}
+        # predictions; equality against an arbitrary label requires a
+        # non-polynomial comparator that CKKS cannot evaluate at depth.
         raise NotImplementedError(
-            "Encrypted selection_rate currently requires pos_label=1; "
-            "encode predictions as {0, 1} or pre-translate before encrypting."
+            "Encrypted selection_rate supports pos_label ∈ {0, 1} (assumes "
+            f"binary {{0, 1}}-encoded predictions); got {pos_label!r}. "
+            "Pre-translate before encrypting or use a polynomial-friendly "
+            "encoding."
         )
     n = y_pred.n
     sw = np.ones(n) if sample_weight is None else np.asarray(sample_weight, dtype=float)
     denom = float(sw.sum())
     numer = float(y_pred.mul_pt(sw).sum_all().first_slot())
-    return _safe_div(numer, denom)
+    rate = _safe_div(numer, denom)
+    # pos_label=0 → the rate of predictions equal to 0 = 1 - mean(y_pred).
+    if pos_label in (0, 0.0):
+        rate = 1.0 - rate
+    return rate
 
 
 def mean_prediction(y_true, y_pred, sample_weight=None) -> float:

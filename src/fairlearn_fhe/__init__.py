@@ -38,10 +38,12 @@ from .encrypted import (
     snapshot_op_counters,
 )
 from .envelope import (
+    ENVELOPE_JSON_SCHEMA,
     ENVELOPE_SCHEMA,
     MetricEnvelope,
     ParameterSet,
     canonical_envelope_payload,
+    envelope_json_schema,
     estimate_security_bits,
     parameter_set_from_context,
     sign_envelope,
@@ -64,6 +66,8 @@ __all__ = [
     "MetricEnvelope",
     "ParameterSet",
     "ENVELOPE_SCHEMA",
+    "ENVELOPE_JSON_SCHEMA",
+    "envelope_json_schema",
     "canonical_envelope_payload",
     "estimate_security_bits",
     "parameter_set_from_context",
@@ -78,4 +82,4 @@ __all__ = [
     "encrypt_sensitive_features",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
