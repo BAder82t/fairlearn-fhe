@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fairlearn-fhe"
-version = "0.2.1"
+version = "0.2.2"
 description = "Drop-in encrypted (CKKS) Fairlearn metrics. Same API surface; ciphertext arithmetic via TenSEAL."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

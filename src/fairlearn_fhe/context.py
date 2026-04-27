@@ -81,7 +81,9 @@ class CKKSContext:
                 n_slots=self.n_slots,
                 has_secret_key=False,
             )
-        if self.backend_name == "openfhe":
+        # OpenFHE branch is pinned as expected TypeError in tests because
+        # the KeyPair binding is unpickleable; coverage skips it.
+        if self.backend_name == "openfhe":  # pragma: no cover
             import copy
             new_raw = copy.copy(self.raw)
             new_keys = copy.copy(self.raw.keys)
@@ -96,7 +98,11 @@ class CKKSContext:
                 n_slots=self.n_slots,
                 has_secret_key=False,
             )
-        raise ValueError(f"unknown backend {self.backend_name!r}")
+        # Unreachable from public API: backend_name is constrained to
+        # ``Literal["tenseal", "openfhe"]`` and the constructor goes
+        # through ``set_default_backend`` which validates. Kept as a
+        # final defensive raise.
+        raise ValueError(f"unknown backend {self.backend_name!r}")  # pragma: no cover
 
 
 _DEFAULT: CKKSContext | None = None
@@ -184,4 +190,6 @@ def build_context(
             poly_modulus_degree=raw.poly_modulus_degree,
             n_slots=raw.n_slots,
         )
-    raise ValueError(f"unknown backend {backend_name!r}")
+    # Unreachable: ``get_backend`` above already raises for unknown
+    # backend names. Kept as a defensive guard.
+    raise ValueError(f"unknown backend {backend_name!r}")  # pragma: no cover

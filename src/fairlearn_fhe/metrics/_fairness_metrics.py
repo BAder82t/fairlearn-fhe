@@ -62,7 +62,9 @@ def _pos_neg_counts(sensitive_features, y_true, sample_weight):
     """
     if isinstance(sensitive_features, EncryptedMaskSet):
         # Auditor-public metadata stamped on the EncryptedMaskSet.
-        if not hasattr(sensitive_features, "positives") or not hasattr(
+        # Defensive: both attrs are dataclass fields so always present;
+        # only fires for malformed manually-constructed instances.
+        if not hasattr(sensitive_features, "positives") or not hasattr(  # pragma: no cover
             sensitive_features, "negatives"
         ):
             raise ValueError(

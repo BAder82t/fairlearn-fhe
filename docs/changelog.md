@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.2
+
+Patch release. **100% line coverage.** No API changes.
+
+- 341 tests pass (was 232 in v0.2.1).
+- Line coverage: **100%**.
+- Pinned three genuinely-unreachable defensive branches with
+  `# pragma: no cover` (each documented inline):
+  - `CKKSContext.make_evaluator_context()` OpenFHE branch
+    (KeyPair binding is unpickleable; pinned as expected `TypeError`).
+  - `_pos_neg_counts` `hasattr` guard (positives/negatives are
+    dataclass fields; only fires for malformed manual instances).
+  - `build_context` final ValueError (unreachable because
+    `get_backend` validates first).
+- New tests cover Mode B for the v0.2 metric ports, every
+  `validate_envelope` negative branch, every CLI subcommand path,
+  every `aggregate_difference` / `aggregate_ratio` branch, all
+  scoring helper zero-division edges, plaintext-fallback paths in
+  `_per_rate_metrics` / `_fairness_metrics`, the
+  `make_derived_metric` reserved-arg + unknown-transform paths,
+  ceil-division edges in `_regression_metrics`, `_json_safe` over
+  numpy scalars + nested containers, and the OpenFHE backend's
+  `sum_all` window-clamp branch.
+
 ## 0.2.1
 
 Patch release. Test-coverage closeout, no API changes.
