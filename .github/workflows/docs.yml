@@ -1,8 +1,22 @@
 name: docs
 
+# One-time manual setup before this workflow can succeed:
+#   GitHub repo → Settings → Pages → Source: "GitHub Actions"
+# The default GITHUB_TOKEN cannot create a Pages site itself
+# (`Resource not accessible by integration` from `actions/configure-pages`
+# with `enablement: true`); that operation needs an admin-scoped PAT or
+# the manual toggle above. The "build" job below builds + uploads the
+# docs unconditionally so the artifact is always available; the "deploy"
+# job only runs on main and is skipped cleanly until Pages is enabled.
+
 on:
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,10 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +43,40 @@ jobs:
           python -m pip install -e ".[docs]"
       - name: Build docs
         run: python -m mkdocs build --strict
-      - uses: actions/configure-pages@v5
+      - uses: actions/upload-artifact@v4
         with:
-          # Pages site is provisioned on first run instead of failing when
-          # the repo's Pages source has not been switched to GitHub Actions
-          # in Settings → Pages. Idempotent on subsequent runs.
-          enablement: true
+          name: site
+          path: site
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+      - id: configure
+        # Don't fail the whole workflow if Pages has not been enabled yet
+        # in repo Settings — surface a clear warning and skip the deploy
+        # steps so the docs build still gates PRs.
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+      - name: Pages-not-enabled hint
+        if: steps.configure.outcome != 'success'
+        run: |
+          echo "::warning::GitHub Pages is not enabled for this repository."
+          echo "::warning::Enable it once at Settings → Pages → Source: GitHub Actions, then re-run this workflow."
+          exit 0
       - uses: actions/upload-pages-artifact@v3
+        if: steps.configure.outcome == 'success'
         with:
           path: site
       - id: deployment
+        if: steps.configure.outcome == 'success'
         uses: actions/deploy-pages@v4
