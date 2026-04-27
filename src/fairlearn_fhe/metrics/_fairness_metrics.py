@@ -7,7 +7,8 @@ plaintext per-group rates after the audit boundary.
 
 from __future__ import annotations
 
-from typing import Literal
+import inspect
+from typing import Any, Literal
 
 import fairlearn.metrics as _fl
 import numpy as np
@@ -21,6 +22,25 @@ from .._circuits import (
 )
 from .._groups import EncryptedMaskSet, group_masks
 from ..encrypted import EncryptedVector
+
+
+def _call_fairlearn(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Call ``fn`` with only the kwargs it actually accepts.
+
+    Some fairlearn versions accept ``agg`` on equalized-odds helpers and
+    others don't. Drop unknown kwargs silently rather than crashing the
+    plaintext passthrough — the encrypted path always honours ``agg``.
+    """
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return fn(*args, **kwargs)
+    params = sig.parameters
+    accepts_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+    if accepts_var_kw:
+        return fn(*args, **kwargs)
+    accepted = {k: v for k, v in kwargs.items() if k in params}
+    return fn(*args, **accepted)
 
 
 def _all_ones_mask(n: int) -> dict:
@@ -82,7 +102,8 @@ def demographic_parity_difference(
     sample_weight=None,
 ) -> float:
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.demographic_parity_difference(
+        return _call_fairlearn(
+            _fl.demographic_parity_difference,
             y_true, y_pred,
             sensitive_features=sensitive_features,
             method=method, sample_weight=sample_weight,
@@ -105,7 +126,8 @@ def demographic_parity_ratio(
     sample_weight=None,
 ) -> float:
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.demographic_parity_ratio(
+        return _call_fairlearn(
+            _fl.demographic_parity_ratio,
             y_true, y_pred,
             sensitive_features=sensitive_features,
             method=method, sample_weight=sample_weight,
@@ -136,7 +158,8 @@ def equalized_odds_difference(
     if agg not in ("worst_case", "mean"):
         raise ValueError(f"agg must be 'worst_case' or 'mean', got {agg!r}")
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.equalized_odds_difference(
+        return _call_fairlearn(
+            _fl.equalized_odds_difference,
             y_true, y_pred,
             sensitive_features=sensitive_features,
             method=method, sample_weight=sample_weight, agg=agg,
@@ -173,7 +196,8 @@ def equalized_odds_ratio(
     if agg not in ("worst_case", "mean"):
         raise ValueError(f"agg must be 'worst_case' or 'mean', got {agg!r}")
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.equalized_odds_ratio(
+        return _call_fairlearn(
+            _fl.equalized_odds_ratio,
             y_true, y_pred,
             sensitive_features=sensitive_features,
             method=method, sample_weight=sample_weight, agg=agg,
@@ -206,11 +230,21 @@ def equal_opportunity_difference(
     sample_weight=None,
 ) -> float:
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.equal_opportunity_difference(
-            y_true, y_pred,
-            sensitive_features=sensitive_features,
-            method=method, sample_weight=sample_weight,
-        )
+        if hasattr(_fl, "equal_opportunity_difference"):
+            return _call_fairlearn(
+                _fl.equal_opportunity_difference,
+                y_true, y_pred,
+                sensitive_features=sensitive_features,
+                method=method, sample_weight=sample_weight,
+            )
+        # Fallback for fairlearn versions that lack the helper.
+        _labels, masks = group_masks(sensitive_features)
+        sw = _sw(sample_weight)
+        pos, neg = positive_negative_counts(y_true, masks, sample_weight=sw)
+        # Plain numpy compute path (no ciphertext).
+        rates = _plaintext_tpr_per_group(y_true, y_pred, masks, sw, pos)
+        overall_rate = _plaintext_tpr_overall(y_true, y_pred, sw)
+        return aggregate_difference(list(rates.values()), method=method, overall=overall_rate)
     _labels, masks = _resolve_masks(sensitive_features)
     sw = _sw(sample_weight)
     pos, neg = _pos_neg_counts(sensitive_features, y_true, sw)
@@ -234,11 +268,19 @@ def equal_opportunity_ratio(
     sample_weight=None,
 ) -> float:
     if not _needs_encrypted_path(y_pred, sensitive_features):
-        return _fl.equal_opportunity_ratio(
-            y_true, y_pred,
-            sensitive_features=sensitive_features,
-            method=method, sample_weight=sample_weight,
-        )
+        if hasattr(_fl, "equal_opportunity_ratio"):
+            return _call_fairlearn(
+                _fl.equal_opportunity_ratio,
+                y_true, y_pred,
+                sensitive_features=sensitive_features,
+                method=method, sample_weight=sample_weight,
+            )
+        _labels, masks = group_masks(sensitive_features)
+        sw = _sw(sample_weight)
+        pos, neg = positive_negative_counts(y_true, masks, sample_weight=sw)
+        rates = _plaintext_tpr_per_group(y_true, y_pred, masks, sw, pos)
+        overall_rate = _plaintext_tpr_overall(y_true, y_pred, sw)
+        return aggregate_ratio(list(rates.values()), method=method, overall=overall_rate)
     _labels, masks = _resolve_masks(sensitive_features)
     sw = _sw(sample_weight)
     pos, neg = _pos_neg_counts(sensitive_features, y_true, sw)
@@ -254,5 +296,29 @@ def equal_opportunity_ratio(
 
 
 def _sw(sample_weight):
-    import numpy as np
     return None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+
+
+def _plaintext_tpr_per_group(y_true, y_pred, masks, sw, positives):
+    y = np.asarray(y_true, dtype=float)
+    yp = np.asarray(y_pred, dtype=float)
+    weights = np.ones_like(y) if sw is None else sw
+    out: dict[object, float] = {}
+    for label, mask in masks.items():
+        m = mask * weights
+        denom = positives[label]
+        if denom <= 0:
+            out[label] = 0.0
+        else:
+            out[label] = float((m * y * yp).sum() / denom)
+    return out
+
+
+def _plaintext_tpr_overall(y_true, y_pred, sw) -> float:
+    y = np.asarray(y_true, dtype=float)
+    yp = np.asarray(y_pred, dtype=float)
+    weights = np.ones_like(y) if sw is None else sw
+    denom = float((weights * y).sum())
+    if denom <= 0:
+        return 0.0
+    return float((weights * y * yp).sum() / denom)

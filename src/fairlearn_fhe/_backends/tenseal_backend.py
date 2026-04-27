@@ -16,6 +16,7 @@ class TenSEALContext:
     scale: float
     poly_modulus_degree: int
     n_slots: int
+    coeff_mod_bit_sizes: tuple[int, ...] = ()
     backend: str = NAME
 
 
@@ -28,10 +29,11 @@ def build_context(
     import tenseal as ts
     if coeff_mod_bit_sizes is None:
         coeff_mod_bit_sizes = [60, 40, 40, 40, 40, 40, 40, 60]
+    coeff = tuple(int(b) for b in coeff_mod_bit_sizes)
     ctx = ts.context(
         ts.SCHEME_TYPE.CKKS,
         poly_modulus_degree=poly_modulus_degree,
-        coeff_mod_bit_sizes=list(coeff_mod_bit_sizes),
+        coeff_mod_bit_sizes=list(coeff),
     )
     ctx.global_scale = float(2 ** scale_bits)
     ctx.generate_galois_keys()
@@ -41,6 +43,7 @@ def build_context(
         scale=float(2 ** scale_bits),
         poly_modulus_degree=poly_modulus_degree,
         n_slots=poly_modulus_degree // 2,
+        coeff_mod_bit_sizes=coeff,
     )
 
 

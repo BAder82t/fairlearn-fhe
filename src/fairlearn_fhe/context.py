@@ -27,6 +27,7 @@ class CKKSContext:
     scale: float
     poly_modulus_degree: int
     n_slots: int
+    has_secret_key: bool = True
 
     @property
     def backend(self) -> str:
@@ -37,19 +38,94 @@ class CKKSContext:
         return self.backend_module.encrypt(self.raw, values)
 
     def decrypt_vector(self, ct, n: int) -> list[float]:
+        if not self.has_secret_key:
+            raise RuntimeError(
+                "this context has no secret key (evaluator-only); "
+                "ciphertexts must be decrypted by the keyholder."
+            )
         if self.backend_name == "openfhe":
             return self.backend_module.decrypt(ct, n, self.raw)
         return self.backend_module.decrypt(ct, n)
+
+    def make_evaluator_context(self) -> CKKSContext:
+        """Return a copy of this context with the secret key removed.
+
+        Use this when handing the context to an evaluator (e.g. the
+        auditor in a Vendor→Auditor split): the evaluator can perform
+        arithmetic and rotations but cannot decrypt. The keyholder
+        retains the original secret-key context for the final decrypt.
+
+        For TenSEAL this calls
+        ``context.make_context_public()``; for OpenFHE this clones the
+        :class:`OpenFHEContext` with ``keys.secretKey`` set to
+        ``None``.
+        """
+        if self.backend_name == "tenseal":
+            import copy
+            new_raw = copy.copy(self.raw)
+            inner = self.raw.context
+            # TenSEAL exposes ``make_context_public`` to drop the secret key.
+            try:
+                pub = inner.copy()
+                pub.make_context_public()
+            except AttributeError:
+                pub = inner
+                pub.make_context_public()
+            new_raw.context = pub
+            return CKKSContext(
+                backend_module=self.backend_module,
+                backend_name=self.backend_name,
+                raw=new_raw,
+                scale=self.scale,
+                poly_modulus_degree=self.poly_modulus_degree,
+                n_slots=self.n_slots,
+                has_secret_key=False,
+            )
+        if self.backend_name == "openfhe":
+            import copy
+            new_raw = copy.copy(self.raw)
+            new_keys = copy.copy(self.raw.keys)
+            new_keys.secretKey = None
+            new_raw.keys = new_keys
+            return CKKSContext(
+                backend_module=self.backend_module,
+                backend_name=self.backend_name,
+                raw=new_raw,
+                scale=self.scale,
+                poly_modulus_degree=self.poly_modulus_degree,
+                n_slots=self.n_slots,
+                has_secret_key=False,
+            )
+        raise ValueError(f"unknown backend {self.backend_name!r}")
 
 
 _DEFAULT: CKKSContext | None = None
 
 
 def default_context() -> CKKSContext:
+    """Return the lazily-initialised process-wide default context.
+
+    The same object is returned on every call until
+    :func:`reset_default_context` is invoked. Tests that want a clean
+    context per case should pass an explicit ``ctx`` instead of relying
+    on the default.
+    """
     global _DEFAULT
     if _DEFAULT is None:
         _DEFAULT = build_context()
     return _DEFAULT
+
+
+def set_default_context(ctx: CKKSContext) -> None:
+    """Install ``ctx`` as the process-wide default context."""
+    global _DEFAULT
+    _DEFAULT = ctx
+
+
+def reset_default_context() -> None:
+    """Drop the cached default context (next call rebuilds)."""
+    global _DEFAULT
+    _DEFAULT = None
 
 
 def build_context(

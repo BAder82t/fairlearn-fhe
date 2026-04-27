@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from typing import Any
 
 import numpy as np
@@ -18,6 +19,20 @@ from ._groups import EncryptedMaskSet, group_masks
 from .context import CKKSContext, default_context
 from .encrypted import EncryptedVector, encrypt, reset_op_counters, snapshot_op_counters
 from .envelope import MetricEnvelope, parameter_set_from_context
+
+
+class SmallGroupWarning(UserWarning):
+    """Raised when an audited group has fewer than ``MIN_GROUP_SIZE`` samples.
+
+    Aggregate metrics over very small groups can be re-identifying
+    even when individual predictions are encrypted, because the metric
+    value pins down a small number of possible label/prediction
+    combinations. The threshold is conservative (10) and configurable
+    by passing ``min_group_size`` to :func:`audit_metric`.
+    """
+
+
+DEFAULT_MIN_GROUP_SIZE = 10
 
 _BASE_METRIC_FNS = {
     "selection_rate": fhe_metrics.selection_rate,
@@ -86,6 +101,33 @@ def _audit_metadata(y_true: Any, sensitive_features: Any, kwargs: dict[str, Any]
     return trust_model, metric_kwargs, input_hashes
 
 
+def _check_small_groups(
+    sensitive_features: Any,
+    min_group_size: int,
+) -> None:
+    if sensitive_features is None or min_group_size <= 0:
+        return
+    if isinstance(sensitive_features, EncryptedMaskSet):
+        small = {
+            lbl: count
+            for lbl, count in sensitive_features.counts.items()
+            if count < min_group_size
+        }
+    else:
+        labels, masks = group_masks(sensitive_features)
+        small = {lbl: float(masks[lbl].sum()) for lbl in labels
+                 if float(masks[lbl].sum()) < min_group_size}
+    if small:
+        warnings.warn(
+            f"audited groups with fewer than {min_group_size} samples: {small!r}; "
+            "the decrypted metric scalar in the envelope can be "
+            "re-identifying for small groups even though individual "
+            "predictions remain encrypted.",
+            SmallGroupWarning,
+            stacklevel=3,
+        )
+
+
 def audit_metric(
     metric_name: str,
     y_true,
@@ -93,12 +135,18 @@ def audit_metric(
     *,
     sensitive_features=None,
     ctx: CKKSContext | None = None,
+    min_group_size: int = DEFAULT_MIN_GROUP_SIZE,
     **kwargs: Any,
 ) -> MetricEnvelope:
     """Run ``metric_name`` under encryption and return an audit envelope.
 
     ``y_pred`` may be plaintext (encrypted internally) or an
     :class:`EncryptedVector` (used as-is).
+
+    A :class:`SmallGroupWarning` is emitted when any audited group has
+    fewer than ``min_group_size`` samples (default 10) — set to ``0``
+    to disable. The warning is informational; the envelope is still
+    produced.
     """
     if metric_name not in _BASE_METRIC_FNS:
         raise KeyError(
@@ -106,6 +154,8 @@ def audit_metric(
         )
     fn = _BASE_METRIC_FNS[metric_name]
     ctx = ctx or default_context()
+
+    _check_small_groups(sensitive_features, min_group_size)
 
     if not isinstance(y_pred, EncryptedVector):
         y_pred = encrypt(ctx, y_pred)
@@ -129,7 +179,7 @@ def audit_metric(
     return MetricEnvelope(
         metric_name=metric_name,
         value=value,
-        parameter_set=parameter_set_from_context(ctx),
+        parameter_set=parameter_set_from_context(ctx, depth=6),
         observed_depth=observed_depth,
         op_counts=counts,
         n_samples=int(y_pred.n),

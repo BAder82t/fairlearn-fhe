@@ -12,9 +12,23 @@ encryption and decrypted at the audit boundary.
 
 from __future__ import annotations
 
-from ._groups import EncryptedMaskSet, encrypt_sensitive_features
-from .audit import audit_metric
-from .context import CKKSContext, build_context, default_context
+from ._groups import (
+    EncryptedMaskSet,
+    MaskDecryptionWarning,
+    encrypt_sensitive_features,
+)
+from .audit import (
+    DEFAULT_MIN_GROUP_SIZE,
+    SmallGroupWarning,
+    audit_metric,
+)
+from .context import (
+    CKKSContext,
+    build_context,
+    default_context,
+    reset_default_context,
+    set_default_context,
+)
 from .encrypted import (
     OP_COUNTERS,
     EncryptedVector,
@@ -28,6 +42,7 @@ from .envelope import (
     MetricEnvelope,
     ParameterSet,
     canonical_envelope_payload,
+    estimate_security_bits,
     parameter_set_from_context,
     sign_envelope,
     validate_envelope,
@@ -38,6 +53,8 @@ __all__ = [
     "CKKSContext",
     "build_context",
     "default_context",
+    "set_default_context",
+    "reset_default_context",
     "EncryptedVector",
     "encrypt",
     "decrypt",
@@ -48,12 +65,16 @@ __all__ = [
     "ParameterSet",
     "ENVELOPE_SCHEMA",
     "canonical_envelope_payload",
+    "estimate_security_bits",
     "parameter_set_from_context",
     "sign_envelope",
     "validate_envelope",
     "verify_envelope_signature",
     "audit_metric",
+    "DEFAULT_MIN_GROUP_SIZE",
+    "SmallGroupWarning",
     "EncryptedMaskSet",
+    "MaskDecryptionWarning",
     "encrypt_sensitive_features",
 ]
 

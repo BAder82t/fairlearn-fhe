@@ -11,6 +11,7 @@ envelope. Counters are global; reset between calls with
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -18,23 +19,33 @@ import numpy as np
 
 from .context import CKKSContext
 
-OP_COUNTERS: dict[str, int] = {
-    "ct_ct_muls": 0,
-    "ct_pt_muls": 0,
-    "ct_scalar_muls": 0,
-    "rotations": 0,
-    "additions": 0,
-    "subtractions": 0,
-}
+_COUNTER_KEYS = (
+    "ct_ct_muls",
+    "ct_pt_muls",
+    "ct_scalar_muls",
+    "rotations",
+    "additions",
+    "subtractions",
+)
+
+OP_COUNTERS: dict[str, int] = {k: 0 for k in _COUNTER_KEYS}
+_COUNTER_LOCK = threading.Lock()
+
+
+def _inc(key: str, by: int = 1) -> None:
+    with _COUNTER_LOCK:
+        OP_COUNTERS[key] += by
 
 
 def reset_op_counters() -> None:
-    for k in OP_COUNTERS:
-        OP_COUNTERS[k] = 0
+    with _COUNTER_LOCK:
+        for k in OP_COUNTERS:
+            OP_COUNTERS[k] = 0
 
 
 def snapshot_op_counters() -> dict[str, int]:
-    return dict(OP_COUNTERS)
+    with _COUNTER_LOCK:
+        return dict(OP_COUNTERS)
 
 
 @dataclass
@@ -72,7 +83,7 @@ class EncryptedVector:
         return self.ctx.backend_name == "openfhe"
 
     def __add__(self, other) -> EncryptedVector:
-        OP_COUNTERS["additions"] += 1
+        _inc("additions")
         be = self._be()
         if isinstance(other, EncryptedVector):
             if self._is_openfhe():
@@ -94,7 +105,7 @@ class EncryptedVector:
     __radd__ = __add__
 
     def __sub__(self, other) -> EncryptedVector:
-        OP_COUNTERS["subtractions"] += 1
+        _inc("subtractions")
         be = self._be()
         if isinstance(other, EncryptedVector):
             if self._is_openfhe():
@@ -120,7 +131,7 @@ class EncryptedVector:
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
 
     def mul_pt(self, plaintext) -> EncryptedVector:
-        OP_COUNTERS["ct_pt_muls"] += 1
+        _inc("ct_pt_muls")
         pt = _as_list(plaintext, self.n)
         be = self._be()
         if self._is_openfhe():
@@ -130,16 +141,17 @@ class EncryptedVector:
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth + 1)
 
     def mul_scalar(self, s: float) -> EncryptedVector:
-        OP_COUNTERS["ct_scalar_muls"] += 1
+        _inc("ct_scalar_muls")
         be = self._be()
         if self._is_openfhe():
             new_ct = be.mul_scalar(self.ciphertext, float(s), self.ctx.raw)
         else:
             new_ct = be.mul_scalar(self.ciphertext, float(s))
-        return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth)
+        # CKKS scalar mul consumes one multiplicative level on both backends.
+        return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth + 1)
 
     def mul_ct(self, other: EncryptedVector) -> EncryptedVector:
-        OP_COUNTERS["ct_ct_muls"] += 1
+        _inc("ct_ct_muls")
         be = self._be()
         if self._is_openfhe():
             new_ct = be.mul_ct(self.ciphertext, other.ciphertext, self.ctx.raw)
@@ -149,7 +161,7 @@ class EncryptedVector:
 
     def sum_all(self) -> EncryptedVector:
         if self.n > 1:
-            OP_COUNTERS["rotations"] += int(np.log2(self.n))
+            _inc("rotations", int(np.log2(self.n)))
         be = self._be()
         if self._is_openfhe():
             new_ct = be.sum_all(self.ciphertext, self.n, self.ctx.raw)

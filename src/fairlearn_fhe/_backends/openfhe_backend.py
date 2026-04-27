@@ -100,7 +100,9 @@ def sub(a, b, ctx: OpenFHEContext):
 
 
 def neg(a, ctx: OpenFHEContext):
-    return ctx.crypto_context.EvalMult(a, -1.0)
+    # EvalNegate is free of multiplicative-level cost; EvalMult(-1.0) would
+    # consume a level on OpenFHE.
+    return ctx.crypto_context.EvalNegate(a)
 
 
 def mul_pt(ct, plaintext_list, ctx: OpenFHEContext):
@@ -117,4 +119,15 @@ def mul_ct(a, b, ctx: OpenFHEContext):
 
 
 def sum_all(ct, n: int, ctx: OpenFHEContext):
-    return ctx.crypto_context.EvalSum(ct, ctx.n_slots)
+    # Sum exactly the populated slots. EvalSum requires a power-of-two
+    # window ≤ the configured batch size; round up to the smallest such
+    # window that covers ``n``. Padding slots are zero in our
+    # encrypt() path so summing them in is benign.
+    if n <= 0:
+        return ct
+    window = 1
+    while window < int(n):
+        window <<= 1
+    if window > ctx.n_slots:
+        window = ctx.n_slots
+    return ctx.crypto_context.EvalSum(ct, window)

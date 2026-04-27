@@ -23,10 +23,28 @@ _EPS = 1e-12
 MaskLike = dict[object, np.ndarray] | EncryptedMaskSet
 
 
-def _safe_div(num: float, den: float) -> float:
+def _safe_div(
+    num: float,
+    den: float,
+    *,
+    clip_lower: float | None = 0.0,
+    clip_upper: float | None = 1.0,
+) -> float:
+    """Divide ``num`` by ``den`` with CKKS-noise-safe clamping.
+
+    CKKS noise can produce a numerator slightly below 0 (or above the
+    true denominator) when the exact value is on the boundary. We clamp
+    rates into ``[clip_lower, clip_upper]`` to match plaintext fairlearn
+    semantics. Pass ``clip_lower=None``/``clip_upper=None`` to disable.
+    """
     if den <= _EPS:
         return 0.0
-    return num / den
+    result = num / den
+    if clip_lower is not None and result < clip_lower:
+        result = clip_lower
+    if clip_upper is not None and result > clip_upper:
+        result = clip_upper
+    return result
 
 
 def _iter_masks(masks: MaskLike, sample_weight: np.ndarray | None):
@@ -118,6 +136,14 @@ def confusion_rates_per_group(
     ``positives_per_group`` / ``negatives_per_group``; if omitted and
     masks are encrypted, we assume the caller has decrypted them
     upstream.
+
+    Both encrypted-mask and plaintext-mask paths apply
+    ``sample_weight`` exactly once to the numerator. For correctness
+    the supplied ``positives_per_group`` / ``negatives_per_group``
+    must therefore embed the **same** ``sample_weight`` (which is what
+    :func:`encrypt_sensitive_features` and
+    :meth:`EncryptedMaskSet.attach_label_counts` produce when
+    ``sample_weight`` is passed).
     """
     y = np.asarray(y_true, dtype=float)
     sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)

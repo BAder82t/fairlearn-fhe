@@ -17,6 +17,7 @@ values forms the group set, matching Fairlearn's `MetricFrame`.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -24,6 +25,16 @@ import pandas as pd
 
 from .context import CKKSContext
 from .encrypted import EncryptedVector
+
+
+class MaskDecryptionWarning(UserWarning):
+    """Raised when an API call decrypts encrypted group masks.
+
+    Calling such an API undoes the Mode-B privacy guarantee for the
+    sensitive features (per-row group membership becomes recoverable).
+    The warning is emitted so callers cannot silently break the trust
+    model they configured.
+    """
 
 
 @dataclass
@@ -49,23 +60,53 @@ class EncryptedMaskSet:
         for lbl in self.labels:
             yield lbl, self.masks[lbl], self.counts[lbl]
 
-    def attach_label_counts(self, y_true, sample_weight=None) -> EncryptedMaskSet:
+    def attach_label_counts(
+        self,
+        y_true,
+        sample_weight=None,
+        *,
+        plaintext_masks: dict[object, np.ndarray] | None = None,
+    ) -> EncryptedMaskSet:
         """Stamp per-group positive/negative counts using plaintext y_true.
 
-        Returns ``self`` for chaining.
+        ``plaintext_masks`` is the preferred input: pass the original
+        ``{0,1}`` masks held by the encrypting party. When omitted this
+        method falls back to **decrypting** every encrypted mask, which
+        defeats Mode-B privacy for the sensitive features. A
+        :class:`MaskDecryptionWarning` is raised in that case.
+
+        Returns ``self`` for chaining. Prefer constructing the
+        :class:`EncryptedMaskSet` via
+        :func:`encrypt_sensitive_features` with ``y_true=`` so counts
+        are stamped from plaintext at encryption time and this method
+        is never needed.
         """
         y = np.asarray(y_true, dtype=float)
         sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)
-        # Recover plaintext masks lazily by decrypting; cheap because
-        # we typically attach at encryption time when the mask source
-        # is still in plaintext.
         pos: dict[object, float] = {}
         neg: dict[object, float] = {}
-        for lbl in self.labels:
-            m = np.asarray(self.masks[lbl].decrypt(), dtype=float).round()
-            mw = m * sw
-            pos[lbl] = float((mw * y).sum())
-            neg[lbl] = float((mw * (1.0 - y)).sum())
+        if plaintext_masks is None:
+            warnings.warn(
+                "attach_label_counts() decrypted the encrypted masks to "
+                "compute per-group label counts; this discloses per-row "
+                "group membership and breaks the Mode-B privacy guarantee. "
+                "Pass plaintext_masks=... or use "
+                "encrypt_sensitive_features(ctx, sf, y_true=y_true) at "
+                "encryption time instead.",
+                MaskDecryptionWarning,
+                stacklevel=2,
+            )
+            for lbl in self.labels:
+                m = np.asarray(self.masks[lbl].decrypt(), dtype=float).round()
+                mw = m * sw
+                pos[lbl] = float((mw * y).sum())
+                neg[lbl] = float((mw * (1.0 - y)).sum())
+        else:
+            for lbl in self.labels:
+                m = np.asarray(plaintext_masks[lbl], dtype=float)
+                mw = m * sw
+                pos[lbl] = float((mw * y).sum())
+                neg[lbl] = float((mw * (1.0 - y)).sum())
         self.positives = pos
         self.negatives = neg
         return self

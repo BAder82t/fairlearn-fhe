@@ -163,77 +163,86 @@ def _resolve_metric(
     return out
 
 
-class MetricFrame:
-    """Encrypted-aware MetricFrame.
+def MetricFrame(
+    *,
+    metrics: Any,
+    y_true,
+    y_pred,
+    sensitive_features,
+    sample_params: Mapping[str, Any] | None = None,
+    allow_decrypt: bool = False,
+):
+    """Encrypted-aware MetricFrame factory.
 
-    Mirrors :class:`fairlearn.metrics.MetricFrame` for plaintext inputs.
-    For encrypted ``y_pred`` returns an :class:`EncryptedMetricFrame`
-    with the same accessors used by the fairness wrappers.
+    Mirrors :class:`fairlearn.metrics.MetricFrame` for plaintext inputs
+    (returns the genuine fairlearn object so ``isinstance`` against
+    :class:`fairlearn.metrics.MetricFrame` works). For encrypted
+    ``y_pred`` returns an :class:`EncryptedMetricFrame` with the same
+    accessors used by the fairness wrappers.
+
+    This is a function rather than a class so that callers don't have
+    to think about which concrete type they got back; introspect via
+    ``isinstance(result, EncryptedMetricFrame)`` if you need to
+    distinguish.
     """
-
-    def __new__(
-        cls,
-        *,
-        metrics: Any,
-        y_true,
-        y_pred,
-        sensitive_features,
-        sample_params: Mapping[str, Any] | None = None,
-        allow_decrypt: bool = False,
-    ):
-        sf_encrypted = isinstance(sensitive_features, EncryptedMaskSet)
-        if sf_encrypted and not _is_encrypted(y_pred):
-            raise TypeError(
-                "encrypted sensitive_features require an encrypted y_pred."
-            )
-        if not _is_encrypted(y_pred) and not sf_encrypted:
-            return _fl.MetricFrame(
-                metrics=metrics,
-                y_true=y_true,
-                y_pred=y_pred,
-                sensitive_features=sensitive_features,
-                sample_params=sample_params,
-            )
-        return cls._build_encrypted(
+    sf_encrypted = isinstance(sensitive_features, EncryptedMaskSet)
+    if sf_encrypted and not _is_encrypted(y_pred):
+        raise TypeError(
+            "encrypted sensitive_features require an encrypted y_pred."
+        )
+    if not _is_encrypted(y_pred) and not sf_encrypted:
+        return _fl.MetricFrame(
             metrics=metrics,
             y_true=y_true,
             y_pred=y_pred,
             sensitive_features=sensitive_features,
             sample_params=sample_params,
-            allow_decrypt=allow_decrypt,
         )
+    return _build_encrypted(
+        metrics=metrics,
+        y_true=y_true,
+        y_pred=y_pred,
+        sensitive_features=sensitive_features,
+        sample_params=sample_params,
+        allow_decrypt=allow_decrypt,
+    )
 
-    @staticmethod
-    def fhe(
-        *,
-        metrics: Any,
-        y_true,
-        y_pred,
-        sensitive_features,
-        sample_params: Mapping[str, Any] | None = None,
-        allow_decrypt: bool = False,
-    ) -> EncryptedMetricFrame:
-        if not _is_encrypted(y_pred):
-            raise TypeError("MetricFrame.fhe requires an encrypted y_pred (EncryptedVector).")
-        return MetricFrame._build_encrypted(
-            metrics=metrics,
-            y_true=y_true,
-            y_pred=y_pred,
-            sensitive_features=sensitive_features,
-            sample_params=sample_params,
-            allow_decrypt=allow_decrypt,
-        )
 
-    @staticmethod
-    def _build_encrypted(
-        *,
-        metrics,
-        y_true,
-        y_pred: EncryptedVector,
-        sensitive_features,
-        sample_params,
-        allow_decrypt: bool,
-    ) -> EncryptedMetricFrame:
+def metric_frame_fhe(
+    *,
+    metrics: Any,
+    y_true,
+    y_pred,
+    sensitive_features,
+    sample_params: Mapping[str, Any] | None = None,
+    allow_decrypt: bool = False,
+) -> EncryptedMetricFrame:
+    """Always-encrypted MetricFrame; raises if ``y_pred`` is plaintext."""
+    if not _is_encrypted(y_pred):
+        raise TypeError("metric_frame_fhe requires an encrypted y_pred (EncryptedVector).")
+    return _build_encrypted(
+        metrics=metrics,
+        y_true=y_true,
+        y_pred=y_pred,
+        sensitive_features=sensitive_features,
+        sample_params=sample_params,
+        allow_decrypt=allow_decrypt,
+    )
+
+
+# Backwards-compatible alias for ``MetricFrame.fhe(...)`` callers.
+MetricFrame.fhe = metric_frame_fhe  # type: ignore[attr-defined]
+
+
+def _build_encrypted(
+    *,
+    metrics,
+    y_true,
+    y_pred: EncryptedVector,
+    sensitive_features,
+    sample_params,
+    allow_decrypt: bool,
+) -> EncryptedMetricFrame:
         if isinstance(sensitive_features, EncryptedMaskSet):
             labels = list(sensitive_features.labels)
             masks: Any = sensitive_features

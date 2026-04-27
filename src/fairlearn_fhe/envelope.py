@@ -202,6 +202,9 @@ def validate_envelope(
     *,
     allowed_metrics: Sequence[str] | None = None,
     max_observed_depth: int | None = None,
+    max_age_seconds: float | None = None,
+    now: float | None = None,
+    min_security_bits: int | None = None,
 ) -> list[str]:
     """Return validation errors for an audit-envelope payload.
 
@@ -210,6 +213,13 @@ def validate_envelope(
     observed depth is within the declared multiplicative-depth budget.
     This is intentionally dependency-free so it can run in lightweight
     verifier tooling.
+
+    Optional verifier-side checks:
+
+    - ``max_age_seconds`` rejects envelopes older than the given window
+      (anti-replay). ``now`` defaults to ``time.time()``.
+    - ``min_security_bits`` rejects parameter sets whose recorded
+      security level is below the verifier's minimum (e.g. ``128``).
     """
     data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
     errors: list[str] = []
@@ -294,15 +304,71 @@ def validate_envelope(
     except (TypeError, ValueError):
         errors.append("value must be numeric")
 
+    timestamp_value: float | None = None
     try:
-        float(data["timestamp"])
+        timestamp_value = float(data["timestamp"])
     except (TypeError, ValueError):
         errors.append("timestamp must be numeric")
+
+    if max_age_seconds is not None and timestamp_value is not None:
+        current = float(now) if now is not None else time.time()
+        if current - timestamp_value > float(max_age_seconds):
+            errors.append("envelope timestamp is older than max_age_seconds")
+        if timestamp_value - current > float(max_age_seconds):
+            errors.append("envelope timestamp is in the future")
+
+    if min_security_bits is not None and ps is not None:
+        if int(ps.security_bits) < int(min_security_bits):
+            errors.append(
+                f"security_bits {ps.security_bits} below verifier minimum "
+                f"{int(min_security_bits)}"
+            )
 
     return errors
 
 
-def parameter_set_from_context(ctx: CKKSContext, *, depth: int = 6) -> ParameterSet:
+def estimate_security_bits(
+    poly_modulus_degree: int,
+    coeff_mod_total_bits: int,
+) -> int:
+    """Conservative HE-standard lookup for CKKS classical security.
+
+    Based on the HomomorphicEncryption.org standard (Table 1, classical
+    security estimates for the RLWE distribution used by CKKS). Returns
+    ``0`` when the parameter pair falls below the 128-bit table — the
+    caller should treat that as "unknown / sub-128" and not record a
+    misleading claim in the envelope.
+    """
+    n = int(poly_modulus_degree)
+    q = int(coeff_mod_total_bits)
+    # (N, max_logQ_for_128bit, max_logQ_for_192bit, max_logQ_for_256bit)
+    table = [
+        (1024, 27, 19, 14),
+        (2048, 54, 37, 29),
+        (4096, 109, 75, 58),
+        (8192, 218, 152, 118),
+        (16384, 438, 305, 237),
+        (32768, 881, 611, 476),
+    ]
+    for ring, b128, b192, b256 in table:
+        if n == ring:
+            if q <= b256:
+                return 256
+            if q <= b192:
+                return 192
+            if q <= b128:
+                return 128
+            return 0
+    return 0
+
+
+def parameter_set_from_context(ctx: CKKSContext, *, depth: int | None = None) -> ParameterSet:
+    """Build a :class:`ParameterSet` from an active CKKS context.
+
+    ``depth`` is the *declared* multiplicative-depth budget. When omitted
+    we infer it from the context (``len(coeff_mod_bit_sizes) - 2`` for
+    TenSEAL; defaults to 6 for OpenFHE which sets the depth at build time).
+    """
     backend_label = ctx.backend
     backend_version = ""
     if ctx.backend_name == "tenseal":
@@ -311,7 +377,7 @@ def parameter_set_from_context(ctx: CKKSContext, *, depth: int = 6) -> Parameter
             backend_version = getattr(_ts, "__version__", "")
         except Exception:
             pass
-        coeff: tuple[int, ...] = (60, 40, 40, 40, 40, 40, 40, 60)
+        coeff = tuple(getattr(ctx.raw, "coeff_mod_bit_sizes", ()) or ())
     else:  # openfhe
         try:
             import openfhe as _of
@@ -321,10 +387,18 @@ def parameter_set_from_context(ctx: CKKSContext, *, depth: int = 6) -> Parameter
         # OpenFHE chooses the chain internally; we record the depth and
         # scaling_factor_bits, leaving the specific primes opaque.
         coeff = ()
+    if coeff:
+        sec_bits = estimate_security_bits(int(ctx.poly_modulus_degree), sum(coeff))
+    else:
+        # Without coeff_mod_bit_sizes (e.g. OpenFHE) we cannot derive the
+        # security level; record 0 to signal "unknown" rather than overclaim.
+        sec_bits = 0
+    if depth is None:
+        depth = max(0, len(coeff) - 2) if coeff else 6
     return ParameterSet(
         backend=backend_label,
         poly_modulus_degree=int(ctx.poly_modulus_degree),
-        security_bits=128,
+        security_bits=sec_bits,
         multiplicative_depth=int(depth),
         coeff_mod_bit_sizes=coeff,
         scaling_factor_bits=int(round(ctx.scale).bit_length() - 1),
