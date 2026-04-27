@@ -33,6 +33,11 @@ jobs:
       - name: Build docs
         run: python -m mkdocs build --strict
       - uses: actions/configure-pages@v5
+        with:
+          # Pages site is provisioned on first run instead of failing when
+          # the repo's Pages source has not been switched to GitHub Actions
+          # in Settings → Pages. Idempotent on subsequent runs.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
