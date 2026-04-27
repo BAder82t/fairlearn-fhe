@@ -24,6 +24,10 @@ python -m build
 python -m twine check dist/*
 ```
 
+The GitHub Actions release workflow can publish to TestPyPI manually, or to
+PyPI from a GitHub release, once trusted publishing is configured for the
+`testpypi` and `pypi` environments.
+
 ## Contribution Guidelines
 
 - Keep API changes compatible with Fairlearn where practical.

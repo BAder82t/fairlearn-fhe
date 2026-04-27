@@ -74,18 +74,35 @@ print(env.to_json())
   "observed_depth": 2,
   "op_counts": {"ct_pt_muls": 4, "ct_ct_muls": 0, "rotations": 56, ...},
   "n_samples": 200,
-  "n_groups": 2
+  "n_groups": 2,
+  "metric_kwargs": {},
+  "trust_model": "plaintext_sensitive_features",
+  "input_hashes": {"y_true": "...", "sensitive_features": "..."}
 }
 ```
 
-Verifier-side code can reject malformed or tampered envelopes without importing
-an FHE backend:
+Verifier-side code can reject malformed or tampered envelopes without importing an FHE backend:
 
 ```python
 from fairlearn_fhe import validate_envelope
 
 errors = validate_envelope(env.to_dict())
 assert errors == []
+```
+
+The same verifier is available as a CLI:
+
+```bash
+fairlearn-fhe-verify envelope.json
+```
+
+Signed envelopes are optional:
+
+```python
+from fairlearn_fhe import sign_envelope, verify_envelope_signature
+
+signed = sign_envelope(env, private_key_pem)
+assert verify_envelope_signature(signed, public_key_pem) == []
 ```
 
 ## Encrypted sensitive features (Mode B)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from base64 import b64decode, b64encode
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -18,6 +19,7 @@ from typing import Any
 from .context import CKKSContext
 
 ENVELOPE_SCHEMA = "fairlearn-fhe.metric-envelope.v1"
+SIGNATURE_ALGORITHM = "Ed25519"
 
 
 @dataclass(frozen=True)
@@ -57,11 +59,15 @@ class MetricEnvelope:
     op_counts: dict[str, int]
     n_samples: int
     n_groups: int
+    metric_kwargs: dict[str, Any] = field(default_factory=dict)
+    trust_model: str = ""
+    input_hashes: dict[str, str] = field(default_factory=dict)
+    signature: dict[str, str] | None = None
     schema_version: str = ENVELOPE_SCHEMA
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        body = {
             "schema_version": self.schema_version,
             "metric_name": self.metric_name,
             "value": float(self.value),
@@ -71,8 +77,14 @@ class MetricEnvelope:
             "op_counts": dict(self.op_counts),
             "n_samples": int(self.n_samples),
             "n_groups": int(self.n_groups),
+            "metric_kwargs": dict(self.metric_kwargs),
+            "trust_model": self.trust_model,
+            "input_hashes": dict(self.input_hashes),
             "timestamp": float(self.timestamp),
         }
+        if self.signature is not None:
+            body["signature"] = dict(self.signature)
+        return body
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), sort_keys=True, indent=2)
@@ -87,6 +99,10 @@ class MetricEnvelope:
             op_counts={str(k): int(v) for k, v in payload["op_counts"].items()},
             n_samples=int(payload["n_samples"]),
             n_groups=int(payload["n_groups"]),
+            metric_kwargs=dict(payload.get("metric_kwargs", {})),
+            trust_model=str(payload.get("trust_model", "")),
+            input_hashes={str(k): str(v) for k, v in payload.get("input_hashes", {}).items()},
+            signature=dict(payload["signature"]) if payload.get("signature") is not None else None,
             schema_version=str(payload.get("schema_version", ENVELOPE_SCHEMA)),
             timestamp=float(payload["timestamp"]),
         )
@@ -94,6 +110,91 @@ class MetricEnvelope:
     @classmethod
     def from_json(cls, body: str) -> MetricEnvelope:
         return cls.from_dict(json.loads(body))
+
+
+def canonical_envelope_payload(payload: Mapping[str, Any] | MetricEnvelope) -> bytes:
+    """Return canonical JSON bytes for hashing or signing an envelope.
+
+    The embedded ``signature`` field is excluded, so the same function can
+    produce the payload before signing and during verification.
+    """
+    data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
+    data.pop("signature", None)
+    return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def sign_envelope(
+    payload: Mapping[str, Any] | MetricEnvelope,
+    private_key_pem: str | bytes,
+) -> dict[str, Any]:
+    """Return a signed envelope payload using an Ed25519 PEM private key.
+
+    ``cryptography`` is imported lazily so unsigned envelope validation does
+    not require the optional signing dependency.
+    """
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    except ImportError as exc:  # pragma: no cover - depends on optional dependency
+        raise RuntimeError("install fairlearn-fhe[signing] to sign envelopes") from exc
+
+    key_bytes = (
+        private_key_pem.encode("utf-8")
+        if isinstance(private_key_pem, str)
+        else private_key_pem
+    )
+    private_key = load_pem_private_key(key_bytes, password=None)
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise TypeError("private_key_pem must contain an Ed25519 private key")
+
+    data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
+    data.pop("signature", None)
+    signature = private_key.sign(canonical_envelope_payload(data))
+    data["signature"] = {
+        "algorithm": SIGNATURE_ALGORITHM,
+        "value": b64encode(signature).decode("ascii"),
+    }
+    return data
+
+
+def verify_envelope_signature(
+    payload: Mapping[str, Any] | MetricEnvelope,
+    public_key_pem: str | bytes,
+) -> list[str]:
+    """Return signature-verification errors for a signed envelope payload."""
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    except ImportError as exc:  # pragma: no cover - depends on optional dependency
+        raise RuntimeError("install fairlearn-fhe[signing] to verify signatures") from exc
+
+    data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
+    signature = data.get("signature")
+    if not isinstance(signature, Mapping):
+        return ["missing signature"]
+    if signature.get("algorithm") != SIGNATURE_ALGORITHM:
+        return [f"unsupported signature algorithm {signature.get('algorithm')!r}"]
+
+    try:
+        signature_bytes = b64decode(str(signature["value"]), validate=True)
+    except (KeyError, ValueError):
+        return ["signature value must be base64"]
+
+    key_bytes = (
+        public_key_pem.encode("utf-8")
+        if isinstance(public_key_pem, str)
+        else public_key_pem
+    )
+    public_key = load_pem_public_key(key_bytes)
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise TypeError("public_key_pem must contain an Ed25519 public key")
+
+    try:
+        public_key.verify(signature_bytes, canonical_envelope_payload(data))
+    except InvalidSignature:
+        return ["signature verification failed"]
+    return []
 
 
 def validate_envelope(
@@ -123,6 +224,9 @@ def validate_envelope(
         "op_counts",
         "n_samples",
         "n_groups",
+        "metric_kwargs",
+        "trust_model",
+        "input_hashes",
         "timestamp",
     }
     missing = sorted(required - data.keys())
@@ -171,6 +275,19 @@ def validate_envelope(
                     errors.append(f"op_counts[{name!r}] must be non-negative")
             except (TypeError, ValueError):
                 errors.append(f"op_counts[{name!r}] must be an integer")
+
+    if not isinstance(data["metric_kwargs"], Mapping):
+        errors.append("metric_kwargs must be a mapping")
+    if not isinstance(data["input_hashes"], Mapping):
+        errors.append("input_hashes must be a mapping")
+    if not isinstance(data["trust_model"], str):
+        errors.append("trust_model must be a string")
+    if "signature" in data:
+        signature = data["signature"]
+        if not isinstance(signature, Mapping):
+            errors.append("signature must be a mapping")
+        elif signature.get("algorithm") != SIGNATURE_ALGORITHM:
+            errors.append(f"unsupported signature algorithm {signature.get('algorithm')!r}")
 
     try:
         float(data["value"])

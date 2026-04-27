@@ -27,8 +27,11 @@ from .envelope import (
     ENVELOPE_SCHEMA,
     MetricEnvelope,
     ParameterSet,
+    canonical_envelope_payload,
     parameter_set_from_context,
+    sign_envelope,
     validate_envelope,
+    verify_envelope_signature,
 )
 
 __all__ = [
@@ -44,8 +47,11 @@ __all__ = [
     "MetricEnvelope",
     "ParameterSet",
     "ENVELOPE_SCHEMA",
+    "canonical_envelope_payload",
     "parameter_set_from_context",
+    "sign_envelope",
     "validate_envelope",
+    "verify_envelope_signature",
     "audit_metric",
     "EncryptedMaskSet",
     "encrypt_sensitive_features",

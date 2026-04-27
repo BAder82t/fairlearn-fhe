@@ -11,5 +11,8 @@ Initial release.
 - Mode B (encrypted `y_pred` and sensitive features) via `encrypt_sensitive_features()`.
 - `MetricEnvelope` with parameter-set hash, observed depth, op counts.
 - `validate_envelope()` for dependency-light audit-envelope verification.
+- `fairlearn-fhe-verify` CLI for regulator-side envelope checks.
+- Optional Ed25519 envelope signing and signature verification.
+- Replay metadata for metric kwargs, trust model, and input hashes.
 - `audit_metric()` one-call wrapper for audit envelope output.
-- 65 passing tests plus 1 OpenFHE-gated test, including edge cases (multi-column sensitive features, sample weights, large n, single group, all-positive class, soft predictions, envelope validation, backend dispatch, encrypted arithmetic).
+- Tests cover edge cases, envelope validation, backend dispatch, encrypted arithmetic, CLI verification, and optional signature verification.

@@ -7,7 +7,11 @@ to log alongside the parameter-set hash.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
+
+import numpy as np
 
 from . import metrics as fhe_metrics
 from ._groups import EncryptedMaskSet, group_masks
@@ -29,6 +33,57 @@ _BASE_METRIC_FNS = {
     "equal_opportunity_difference": fhe_metrics.equal_opportunity_difference,
     "equal_opportunity_ratio": fhe_metrics.equal_opportunity_ratio,
 }
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(v) for v in value]
+    return repr(value)
+
+
+def _hash_values(values: Any) -> str:
+    arr = np.asarray(values, dtype=object).ravel()
+    payload = [_json_safe(v) for v in arr.tolist()]
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(body).hexdigest()
+
+
+def _audit_metadata(y_true: Any, sensitive_features: Any, kwargs: dict[str, Any]) -> tuple[
+    str,
+    dict[str, Any],
+    dict[str, str],
+]:
+    if sensitive_features is None:
+        trust_model = "no_sensitive_features"
+    elif isinstance(sensitive_features, EncryptedMaskSet):
+        trust_model = "encrypted_sensitive_features"
+    else:
+        trust_model = "plaintext_sensitive_features"
+
+    metric_kwargs: dict[str, Any] = {}
+    input_hashes = {"y_true": _hash_values(y_true)}
+
+    for name, value in kwargs.items():
+        if name == "sample_weight":
+            input_hashes["sample_weight"] = _hash_values(value)
+            metric_kwargs[name] = {
+                "present": True,
+                "n": int(np.asarray(value).size),
+                "sha256": input_hashes["sample_weight"],
+            }
+        else:
+            metric_kwargs[name] = _json_safe(value)
+
+    if sensitive_features is not None and not isinstance(sensitive_features, EncryptedMaskSet):
+        input_hashes["sensitive_features"] = _hash_values(sensitive_features)
+
+    return trust_model, metric_kwargs, input_hashes
 
 
 def audit_metric(
@@ -69,6 +124,7 @@ def audit_metric(
 
     counts = snapshot_op_counters()
     observed_depth = counts["ct_pt_muls"] + counts["ct_ct_muls"]
+    trust_model, metric_kwargs, input_hashes = _audit_metadata(y_true, sensitive_features, kwargs)
 
     return MetricEnvelope(
         metric_name=metric_name,
@@ -78,4 +134,7 @@ def audit_metric(
         op_counts=counts,
         n_samples=int(y_pred.n),
         n_groups=int(n_groups),
+        metric_kwargs=metric_kwargs,
+        trust_model=trust_model,
+        input_hashes=input_hashes,
     )

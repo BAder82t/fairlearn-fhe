@@ -8,7 +8,13 @@ The metric envelope packages a value with the parameter set, observed depth, and
 
 ::: fairlearn_fhe.envelope.ParameterSet
 
+::: fairlearn_fhe.envelope.canonical_envelope_payload
+
 ::: fairlearn_fhe.envelope.validate_envelope
+
+::: fairlearn_fhe.envelope.sign_envelope
+
+::: fairlearn_fhe.envelope.verify_envelope_signature
 
 ::: fairlearn_fhe.envelope.parameter_set_from_context
 

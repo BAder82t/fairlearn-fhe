@@ -96,6 +96,13 @@ per metric and ships via pip on every supported platform.
 ```bash
 pip install fairlearn-fhe          # tenseal backend
 pip install fairlearn-fhe[openfhe] # add openfhe backend (requires C++ build)
+pip install fairlearn-fhe[signing] # add Ed25519 envelope signing helpers
+```
+
+Verify an audit envelope without importing an FHE backend:
+
+```bash
+fairlearn-fhe-verify envelope.json
 ```
 
 ## License
