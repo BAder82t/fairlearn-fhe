@@ -175,10 +175,20 @@ def group_masks(sensitive_features) -> tuple[list, dict[object, np.ndarray]]:
             labels.append(k)
     labels.sort(key=_sort_key)
 
-    masks = {
-        lbl: np.fromiter((k == lbl for k in keys), dtype=float, count=len(keys))
-        for lbl in labels
-    }
+    # Single-column labels are scalar — numpy broadcast equality is
+    # both correct and ~K× faster than the previous per-row generator.
+    # Multi-column labels are tuples; numpy cannot broadcast equality
+    # against an object-array of tuples (it tries to compare per-tuple
+    # element), so we fall back to a Python comparison for those.
+    if sf.shape[1] == 1:
+        masks = {lbl: (keys == lbl).astype(float) for lbl in labels}
+    else:
+        masks = {
+            lbl: np.fromiter(
+                (k == lbl for k in keys), dtype=float, count=len(keys),
+            )
+            for lbl in labels
+        }
     return labels, masks
 
 

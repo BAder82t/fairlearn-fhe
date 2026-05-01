@@ -164,6 +164,72 @@ _SCORERS = {
 }
 
 
+def _plaintext_scorer_aggregate(
+    y_true,
+    y_pred,
+    sensitive_features,
+    *,
+    scorer_name: str,
+    sample_weight,
+    reduction: str,
+    method: str = "between_groups",
+) -> float:
+    """Plaintext fallback for older fairlearn versions lacking a helper.
+
+    Computes per-group {tp, fp, tn, fn, n_*} on numpy arrays and routes
+    through the same scorer + aggregation used by the encrypted path so
+    that verdicts are consistent across fairlearn versions.
+    """
+    y = np.asarray(y_true, dtype=float)
+    yp = np.asarray(y_pred, dtype=float)
+    sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)
+    _labels, plain_masks = group_masks(sensitive_features)
+    scorer = _SCORERS[scorer_name]
+
+    per_group_values: list[float] = []
+    for _lbl, mask in plain_masks.items():
+        m = mask * sw
+        m_pos = m * y
+        m_neg = m * (1.0 - y)
+        n_pos = float(m_pos.sum())
+        n_neg = float(m_neg.sum())
+        tp = float((m_pos * yp).sum())
+        fp = float((m_neg * yp).sum())
+        per_group_values.append(scorer({
+            "tp": tp,
+            "fp": fp,
+            "tn": max(n_neg - fp, 0.0),
+            "fn": max(n_pos - tp, 0.0),
+            "n_pos": n_pos,
+            "n_neg": n_neg,
+            "n_total": n_pos + n_neg,
+        }))
+
+    if reduction == "min":
+        return float(min(per_group_values))
+    if reduction == "max":
+        return float(max(per_group_values))
+
+    n_pos = float((y * sw).sum())
+    n_neg = float(((1.0 - y) * sw).sum())
+    tp = float((y * sw * yp).sum())
+    fp = float(((1.0 - y) * sw * yp).sum())
+    overall = scorer({
+        "tp": tp,
+        "fp": fp,
+        "tn": max(n_neg - fp, 0.0),
+        "fn": max(n_pos - tp, 0.0),
+        "n_pos": n_pos,
+        "n_neg": n_neg,
+        "n_total": n_pos + n_neg,
+    })
+    if reduction == "difference":
+        return aggregate_difference(per_group_values, method=method, overall=overall)
+    if reduction == "ratio":
+        return aggregate_ratio(per_group_values, method=method, overall=overall)
+    raise ValueError(f"unknown reduction {reduction!r}")
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -171,6 +237,7 @@ _SCORERS = {
 
 def _group_min(scorer_name: str):
     upstream = getattr(_fl, f"{scorer_name}_group_min", None)
+    reduction = "min"
 
     def _impl(
         y_true,
@@ -180,6 +247,13 @@ def _group_min(scorer_name: str):
         sample_weight=None,
     ) -> float:
         if not _needs_encrypted(y_pred, sensitive_features):
+            if upstream is None:
+                return _plaintext_scorer_aggregate(
+                    y_true, y_pred, sensitive_features,
+                    scorer_name=scorer_name,
+                    sample_weight=sample_weight,
+                    reduction=reduction,
+                )
             return upstream(
                 y_true,
                 y_pred,
@@ -197,6 +271,7 @@ def _group_min(scorer_name: str):
 
 def _group_max(scorer_name: str):
     upstream = getattr(_fl, f"{scorer_name}_group_max", None)
+    reduction = "max"
 
     def _impl(
         y_true,
@@ -206,6 +281,13 @@ def _group_max(scorer_name: str):
         sample_weight=None,
     ) -> float:
         if not _needs_encrypted(y_pred, sensitive_features):
+            if upstream is None:
+                return _plaintext_scorer_aggregate(
+                    y_true, y_pred, sensitive_features,
+                    scorer_name=scorer_name,
+                    sample_weight=sample_weight,
+                    reduction=reduction,
+                )
             return upstream(
                 y_true,
                 y_pred,
@@ -223,6 +305,7 @@ def _group_max(scorer_name: str):
 
 def _group_difference(scorer_name: str):
     upstream = getattr(_fl, f"{scorer_name}_difference", None)
+    reduction = "difference"
 
     def _impl(
         y_true,
@@ -233,6 +316,14 @@ def _group_difference(scorer_name: str):
         sample_weight=None,
     ) -> float:
         if not _needs_encrypted(y_pred, sensitive_features):
+            if upstream is None:
+                return _plaintext_scorer_aggregate(
+                    y_true, y_pred, sensitive_features,
+                    scorer_name=scorer_name,
+                    sample_weight=sample_weight,
+                    reduction=reduction,
+                    method=method,
+                )
             return upstream(
                 y_true,
                 y_pred,
@@ -274,6 +365,7 @@ def _group_difference(scorer_name: str):
 
 def _group_ratio(scorer_name: str):
     upstream = getattr(_fl, f"{scorer_name}_ratio", None)
+    reduction = "ratio"
 
     def _impl(
         y_true,
@@ -284,6 +376,14 @@ def _group_ratio(scorer_name: str):
         sample_weight=None,
     ) -> float:
         if not _needs_encrypted(y_pred, sensitive_features):
+            if upstream is None:
+                return _plaintext_scorer_aggregate(
+                    y_true, y_pred, sensitive_features,
+                    scorer_name=scorer_name,
+                    sample_weight=sample_weight,
+                    reduction=reduction,
+                    method=method,
+                )
             return upstream(
                 y_true,
                 y_pred,

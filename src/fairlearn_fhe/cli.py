@@ -67,11 +67,23 @@ def _add_verify_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--min-security-bits",
         type=int,
-        default=None,
-        help="Reject envelopes whose recorded security level is below this value.",
+        default=128,
+        help=(
+            "Reject envelopes whose recorded security level is below "
+            "this value (default: 128). Pass 0 to disable the check."
+        ),
     )
     p.add_argument(
         "--public-key", help="PEM Ed25519 public key for signature verification."
+    )
+    p.add_argument(
+        "--require-signature",
+        action="store_true",
+        help=(
+            "Fail with an error if the envelope is unsigned or no "
+            "--public-key was supplied. Without this flag an unsigned "
+            "envelope still passes structural validation."
+        ),
     )
     p.add_argument(
         "--json", action="store_true", help="Emit machine-readable JSON output."
@@ -94,6 +106,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             max_age_seconds=args.max_age,
             min_security_bits=args.min_security_bits,
         )
+        # Run cryptographic verification when a public key is supplied.
+        # The boolean ``verified`` is True iff the signature block was
+        # present, the key was readable, and ``verify_envelope_signature``
+        # returned no errors. ``--require-signature`` then forces a
+        # single hard error if verification did not succeed for any
+        # reason — missing key, key read error, missing signature block,
+        # or signature mismatch.
+        verified = False
         if args.public_key:
             try:
                 key = Path(args.public_key).read_bytes()
@@ -101,9 +121,18 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                 errors.append(f"failed to read public key: {exc}")
             else:
                 try:
-                    errors.extend(verify_envelope_signature(payload, key))
+                    sig_errors = verify_envelope_signature(payload, key)
                 except (TypeError, ValueError) as exc:
                     errors.append(f"invalid public key: {exc}")
+                else:
+                    errors.extend(sig_errors)
+                    verified = (not sig_errors) and ("signature" in payload)
+        if args.require_signature and not verified:
+            errors.append(
+                "--require-signature was set but the envelope was not "
+                "cryptographically verified (supply --public-key and "
+                "ensure the envelope is signed)."
+            )
 
     if args.json:
         print(json.dumps({"valid": not errors, "errors": errors}, sort_keys=True))
@@ -119,6 +148,46 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # inspect — pretty-print summary of envelope contents
 # ---------------------------------------------------------------------------
+
+
+import re as _re
+
+# ANSI CSI sequences (`\x1b[...<letter>`) — strip the whole sequence,
+# not just the leading ESC, so that a partial escape arriving on a
+# terminal that re-injects ESC can't still be interpreted.
+_ANSI_CSI_RE = _re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+_ANSI_OSC_RE = _re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+
+# Unicode characters that can re-order or hide rendered text on a
+# bidi-aware terminal. We strip them so a crafted ``metric_name``
+# can't visually flip "INVALID" into "OK" inside ``inspect`` output.
+_UNICODE_HOSTILE = frozenset(
+    "​‌‍‎‏"  # ZWSP, ZWNJ, ZWJ, LRM, RLM
+    "‪‫‬‭‮"  # bidi embedding/override
+    "⁦⁧⁨⁩"        # bidi isolates
+    "  "                    # line/paragraph separators
+    "﻿"                          # BOM / ZWNBSP
+)
+
+
+def _safe_str(value: Any, *, max_len: int = 128) -> str:
+    """Sanitise an untrusted value for printing to a terminal.
+
+    Strips ANSI escape sequences, ASCII control characters, and the
+    common Unicode bidi / zero-width characters that can be used to
+    visually misrepresent inspect output. Caps length to ``max_len``.
+    """
+    s = str(value)
+    s = _ANSI_OSC_RE.sub("", s)
+    s = _ANSI_CSI_RE.sub("", s)
+    cleaned = "".join(
+        ch for ch in s
+        if ch not in _UNICODE_HOSTILE
+        and (ch == "\t" or (ord(ch) >= 32 and ord(ch) != 127))
+    )
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len] + "…"
+    return cleaned
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -150,18 +219,18 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         }
         print(json.dumps(out, sort_keys=True))
     else:
-        print(f"metric:         {metric}")
-        print(f"backend:        {backend}")
-        print(f"trust_model:    {trust_model}")
-        print(f"observed_depth: {depth}")
-        print(f"security_bits:  {sec_bits}")
+        print(f"metric:         {_safe_str(metric)}")
+        print(f"backend:        {_safe_str(backend)}")
+        print(f"trust_model:    {_safe_str(trust_model)}")
+        print(f"observed_depth: {_safe_str(depth)}")
+        print(f"security_bits:  {_safe_str(sec_bits)}")
         print(f"signed:         {'yes' if signed else 'no'}")
         if timestamp is not None:
-            print(f"timestamp:      {timestamp}")
+            print(f"timestamp:      {_safe_str(timestamp)}")
         if op_counts:
             print("op_counts:")
-            for k in sorted(op_counts):
-                print(f"  - {k}: {op_counts[k]}")
+            for k in sorted(op_counts, key=str):
+                print(f"  - {_safe_str(k, max_len=64)}: {_safe_str(op_counts[k])}")
     return 0
 
 

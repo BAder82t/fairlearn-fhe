@@ -17,7 +17,7 @@ import numpy as np
 from . import metrics as fhe_metrics
 from ._groups import EncryptedMaskSet, group_masks
 from .context import CKKSContext, default_context
-from .encrypted import EncryptedVector, encrypt, reset_op_counters, snapshot_op_counters
+from .encrypted import EncryptedVector, encrypt, op_session
 from .envelope import MetricEnvelope, parameter_set_from_context
 
 
@@ -160,26 +160,25 @@ def audit_metric(
     if not isinstance(y_pred, EncryptedVector):
         y_pred = encrypt(ctx, y_pred)
 
-    reset_op_counters()
-    if sensitive_features is None:
-        value = float(fn(y_true, y_pred, **kwargs))
-        n_groups = 1
-    else:
-        value = float(fn(y_true, y_pred, sensitive_features=sensitive_features, **kwargs))
-        if isinstance(sensitive_features, EncryptedMaskSet):
-            n_groups = len(sensitive_features.labels)
+    with op_session() as counts:
+        if sensitive_features is None:
+            value = float(fn(y_true, y_pred, **kwargs))
+            n_groups = 0
         else:
-            labels, _ = group_masks(sensitive_features)
-            n_groups = len(labels)
+            value = float(fn(y_true, y_pred, sensitive_features=sensitive_features, **kwargs))
+            if isinstance(sensitive_features, EncryptedMaskSet):
+                n_groups = len(sensitive_features.labels)
+            else:
+                labels, _ = group_masks(sensitive_features)
+                n_groups = len(labels)
 
-    counts = snapshot_op_counters()
     observed_depth = counts["ct_pt_muls"] + counts["ct_ct_muls"]
     trust_model, metric_kwargs, input_hashes = _audit_metadata(y_true, sensitive_features, kwargs)
 
     return MetricEnvelope(
         metric_name=metric_name,
         value=value,
-        parameter_set=parameter_set_from_context(ctx, depth=6),
+        parameter_set=parameter_set_from_context(ctx),
         observed_depth=observed_depth,
         op_counts=counts,
         n_samples=int(y_pred.n),

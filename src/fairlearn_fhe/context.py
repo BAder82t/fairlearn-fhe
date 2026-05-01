@@ -55,23 +55,46 @@ class CKKSContext:
         arithmetic and rotations but cannot decrypt. The keyholder
         retains the original secret-key context for the final decrypt.
 
-        For TenSEAL this calls
-        ``context.make_context_public()``; for OpenFHE this clones the
-        :class:`OpenFHEContext` with ``keys.secretKey`` set to
-        ``None``.
+        For TenSEAL this serialises the inner context **without** the
+        secret key and reloads it into a fully independent copy — the
+        keyholder's original context is never mutated. For OpenFHE
+        this clones the :class:`OpenFHEContext` with
+        ``keys.secretKey`` set to ``None``.
         """
         if self.backend_name == "tenseal":
-            import copy
-            new_raw = copy.copy(self.raw)
+            import tenseal as ts
+
+            from ._backends.tenseal_backend import TenSEALContext
             inner = self.raw.context
-            # TenSEAL exposes ``make_context_public`` to drop the secret key.
+            # Serialise without the secret key, then reload — guarantees
+            # an independent context object (the original is never
+            # mutated, and the new one cannot decrypt).
             try:
-                pub = inner.copy()
-                pub.make_context_public()
-            except AttributeError:
-                pub = inner
-                pub.make_context_public()
-            new_raw.context = pub
+                buf = inner.serialize(
+                    save_public_key=True,
+                    save_secret_key=False,
+                    save_galois_keys=True,
+                    save_relin_keys=True,
+                )
+            except (AttributeError, TypeError) as exc:
+                raise RuntimeError(
+                    "TenSEAL context does not support serialize(); cannot "
+                    "produce an evaluator-only copy without risking the "
+                    "secret key. Upgrade tenseal to >=0.3.14."
+                ) from exc
+            pub = ts.context_from(buf)
+            # Build the wrapper from scratch with explicit fields so no
+            # mutable state (including the original SEAL Context handle)
+            # is shared between the keyholder's wrapper and the
+            # evaluator's. ``copy.copy`` would have aliased every field.
+            new_raw = TenSEALContext(
+                context=pub,
+                scale=self.raw.scale,
+                poly_modulus_degree=self.raw.poly_modulus_degree,
+                n_slots=self.raw.n_slots,
+                coeff_mod_bit_sizes=tuple(self.raw.coeff_mod_bit_sizes),
+                backend=self.raw.backend,
+            )
             return CKKSContext(
                 backend_module=self.backend_module,
                 backend_name=self.backend_name,
@@ -134,6 +157,73 @@ def reset_default_context() -> None:
     _DEFAULT = None
 
 
+# Conservative cap on the size of a CKKS coefficient-modulus chain. The
+# HE-standard table tops out around 8 prime moduli for any ring we
+# support; values much above this either exceed the ring's bound (no
+# valid security level) or indicate a malformed parameter set.
+_MAX_COEFF_MODULI = 64
+
+
+class InsecureCKKSParametersWarning(UserWarning):
+    """Emitted when build_context runs with sub-128-bit security explicitly enabled."""
+
+
+def _validate_tenseal_params(
+    poly_modulus_degree: int,
+    coeff_mod_bit_sizes: Sequence[int] | None,
+    *,
+    insecure_allow_low_security: bool,
+) -> None:
+    """Reject CKKS parameter combinations that fall below 128-bit security.
+
+    Pass ``insecure_allow_low_security=True`` to bypass — this only
+    exists for testing the security-bits accounting itself; production
+    callers should never set it. When the bypass is taken we emit an
+    :class:`InsecureCKKSParametersWarning` so that a misconfigured
+    pipeline that picked up the flag from a config file (rather than a
+    deliberate caller decision) at least leaves a trace in logs.
+    """
+    import warnings
+
+    from .envelope import estimate_security_bits  # local import to avoid cycle
+
+    if coeff_mod_bit_sizes is None:
+        return  # backend default is known-safe at the supported ring sizes
+    coeff = list(coeff_mod_bit_sizes)
+    if len(coeff) < 2:
+        raise ValueError(
+            "coeff_mod_bit_sizes must have at least two primes "
+            "(special + scaling); got "
+            f"{len(coeff)}."
+        )
+    if len(coeff) > _MAX_COEFF_MODULI:
+        raise ValueError(
+            f"coeff_mod_bit_sizes too long ({len(coeff)} > {_MAX_COEFF_MODULI}); "
+            "this is well past any sensible HE-standard chain."
+        )
+    if any(int(b) <= 0 for b in coeff):
+        raise ValueError("coeff_mod_bit_sizes entries must be positive integers")
+    sec = estimate_security_bits(int(poly_modulus_degree), sum(int(b) for b in coeff))
+    if sec < 128:
+        if not insecure_allow_low_security:
+            raise ValueError(
+                f"build_context refused to construct a context at <128-bit "
+                f"security (poly_modulus_degree={poly_modulus_degree}, "
+                f"sum(coeff_mod_bit_sizes)={sum(int(b) for b in coeff)} → "
+                f"estimated security_bits={sec}). Either reduce the modulus "
+                "chain or increase poly_modulus_degree. To run anyway (e.g. "
+                "for benchmarking) pass insecure_allow_low_security=True."
+            )
+        warnings.warn(
+            f"build_context running at estimated security_bits={sec} "
+            f"(<128) because insecure_allow_low_security=True was set. "
+            "Audit envelopes produced under this context will record "
+            "the true (low) security level.",
+            InsecureCKKSParametersWarning,
+            stacklevel=3,
+        )
+
+
 def build_context(
     *,
     backend: BackendName | None = None,
@@ -142,6 +232,7 @@ def build_context(
     coeff_mod_bit_sizes: Sequence[int] | None = None,
     batch_size: int | None = None,
     noise_flooding=None,
+    insecure_allow_low_security: bool = False,
 ) -> CKKSContext:
     """Build a CKKS context for the chosen backend.
 
@@ -156,11 +247,20 @@ def build_context(
     Currently honoured by the OpenFHE backend only; TenSEAL ignores
     the flag because TenSEAL/SEAL has no NOISE_FLOODING_DECRYPT
     execution mode at the time of this release.
+
+    Caller-supplied ``coeff_mod_bit_sizes`` are validated against the
+    HE-standard 128-bit security table; combinations that fall below
+    are rejected unless ``insecure_allow_low_security=True`` is set.
     """
     backend_name: BackendName = backend or get_default_backend()
     mod = get_backend(backend_name)
 
     if backend_name == "tenseal":
+        _validate_tenseal_params(
+            poly_modulus_degree,
+            coeff_mod_bit_sizes,
+            insecure_allow_low_security=insecure_allow_low_security,
+        )
         raw = mod.build_context(
             poly_modulus_degree=poly_modulus_degree,
             scale_bits=scale_bits,

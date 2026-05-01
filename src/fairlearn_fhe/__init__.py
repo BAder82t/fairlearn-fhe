@@ -24,6 +24,7 @@ from .audit import (
 )
 from .context import (
     CKKSContext,
+    InsecureCKKSParametersWarning,
     build_context,
     default_context,
     reset_default_context,
@@ -34,6 +35,7 @@ from .encrypted import (
     EncryptedVector,
     decrypt,
     encrypt,
+    op_session,
     reset_op_counters,
     snapshot_op_counters,
 )
@@ -53,6 +55,7 @@ from .envelope import (
 
 __all__ = [
     "CKKSContext",
+    "InsecureCKKSParametersWarning",
     "build_context",
     "default_context",
     "set_default_context",
@@ -61,6 +64,7 @@ __all__ = [
     "encrypt",
     "decrypt",
     "OP_COUNTERS",
+    "op_session",
     "reset_op_counters",
     "snapshot_op_counters",
     "MetricEnvelope",

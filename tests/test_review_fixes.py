@@ -42,7 +42,7 @@ from fairlearn_fhe.encrypted import OP_COUNTERS, EncryptedVector, reset_op_count
 from fairlearn_fhe.metrics import MetricFrame
 
 # ---------------------------------------------------------------------------
-# CRITICAL 1 — _safe_div clamps to [0, 1] under CKKS noise
+# _safe_div clamps to [0, 1] under CKKS noise
 # ---------------------------------------------------------------------------
 
 
@@ -70,7 +70,7 @@ def test_safe_div_disable_clamping():
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 2 — OP_COUNTERS is thread-safe
+# OP_COUNTERS is thread-safe
 # ---------------------------------------------------------------------------
 
 
@@ -98,7 +98,7 @@ def test_op_counters_thread_safe(ctx):
 
 
 # ---------------------------------------------------------------------------
-# HIGH 1 — mul_scalar consumes a multiplicative level
+# mul_scalar consumes a multiplicative level
 # ---------------------------------------------------------------------------
 
 
@@ -112,7 +112,7 @@ def test_mul_scalar_increments_depth(ctx):
 
 
 # ---------------------------------------------------------------------------
-# HIGH 2 — MetricFrame factory returns the real fairlearn type on the
+# MetricFrame factory returns the real fairlearn type on the
 # plaintext path so isinstance checks work.
 # ---------------------------------------------------------------------------
 
@@ -141,7 +141,7 @@ def test_metric_frame_encrypted_returns_encrypted_frame(small_dataset, ctx, encr
 
 
 # ---------------------------------------------------------------------------
-# HIGH (security) — security_bits is derived from parameters
+# security_bits is derived from parameters
 # ---------------------------------------------------------------------------
 
 
@@ -173,7 +173,7 @@ def test_audit_metric_records_derived_security_bits(small_dataset, ctx):
 
 
 # ---------------------------------------------------------------------------
-# HIGH (security) — validate_envelope checks staleness + min_security_bits
+# validate_envelope checks staleness + min_security_bits
 # ---------------------------------------------------------------------------
 
 
@@ -219,7 +219,7 @@ def test_validate_envelope_min_security_bits(small_dataset, ctx):
 
 
 # ---------------------------------------------------------------------------
-# HIGH (security) — small group warning
+# small group warning
 # ---------------------------------------------------------------------------
 
 
@@ -257,7 +257,7 @@ def test_audit_metric_no_warning_when_disabled(ctx):
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL (security) — attach_label_counts warns when it decrypts
+# attach_label_counts warns when it decrypts
 # ---------------------------------------------------------------------------
 
 
@@ -281,7 +281,7 @@ def test_attach_label_counts_silent_with_plaintext_masks(ctx, small_dataset):
 
 
 # ---------------------------------------------------------------------------
-# MEDIUM — CLI rejects oversized envelopes
+# CLI rejects oversized envelopes
 # ---------------------------------------------------------------------------
 
 

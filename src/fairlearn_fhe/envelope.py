@@ -94,7 +94,6 @@ ENVELOPE_JSON_SCHEMA: dict[str, Any] = {
                 "pattern": "^[0-9a-f]{64}$",
             },
         },
-        "timestamp_unix": {"type": "number", "minimum": 0},
         "timestamp": {"type": "number", "minimum": 0},
         "signature": {
             "type": "object",
@@ -131,6 +130,19 @@ class ParameterSet:
     scaling_factor_bits: int
     backend_version: str = ""
 
+    def __post_init__(self) -> None:
+        # Enforce the modulus-chain cap on every construction path,
+        # not just from_dict / build_context. Protects parameter_set_from_context
+        # when the underlying backend context was built from
+        # attacker-controlled serialised bytes.
+        from .context import _MAX_COEFF_MODULI  # local import to avoid cycle
+
+        if len(self.coeff_mod_bit_sizes) > _MAX_COEFF_MODULI:
+            raise ValueError(
+                f"coeff_mod_bit_sizes too long ({len(self.coeff_mod_bit_sizes)} "
+                f"> {_MAX_COEFF_MODULI})."
+            )
+
     def hash(self) -> str:
         body = json.dumps(asdict(self), sort_keys=True,
                           separators=(",", ":")).encode("utf-8")
@@ -138,12 +150,30 @@ class ParameterSet:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ParameterSet:
+        coeff_raw = payload["coeff_mod_bit_sizes"]
+        # Cap the chain length to the same bound build_context enforces;
+        # an attacker-supplied envelope with a million-element chain
+        # would otherwise allocate unbounded memory before any
+        # downstream validator runs.
+        from .context import _MAX_COEFF_MODULI  # local import to avoid cycle
+
+        if hasattr(coeff_raw, "__len__") and len(coeff_raw) > _MAX_COEFF_MODULI:
+            raise ValueError(
+                f"coeff_mod_bit_sizes too long ({len(coeff_raw)} > "
+                f"{_MAX_COEFF_MODULI}); refusing to deserialise."
+            )
+        coeff_tuple = tuple(int(v) for v in coeff_raw)
+        if len(coeff_tuple) > _MAX_COEFF_MODULI:
+            raise ValueError(
+                f"coeff_mod_bit_sizes too long ({len(coeff_tuple)} > "
+                f"{_MAX_COEFF_MODULI}); refusing to deserialise."
+            )
         return cls(
             backend=str(payload["backend"]),
             poly_modulus_degree=int(payload["poly_modulus_degree"]),
             security_bits=int(payload["security_bits"]),
             multiplicative_depth=int(payload["multiplicative_depth"]),
-            coeff_mod_bit_sizes=tuple(int(v) for v in payload["coeff_mod_bit_sizes"]),
+            coeff_mod_bit_sizes=coeff_tuple,
             scaling_factor_bits=int(payload["scaling_factor_bits"]),
             backend_version=str(payload.get("backend_version", "")),
         )
@@ -251,7 +281,7 @@ def sign_envelope(
     signature = private_key.sign(canonical_envelope_payload(data))
     data["signature"] = {
         "algorithm": SIGNATURE_ALGORITHM,
-        "value": b64encode(signature).decode("ascii"),
+        "signature_b64": b64encode(signature).decode("ascii"),
     }
     return data
 
@@ -275,9 +305,17 @@ def verify_envelope_signature(
     if signature.get("algorithm") != SIGNATURE_ALGORITHM:
         return [f"unsupported signature algorithm {signature.get('algorithm')!r}"]
 
+    # Prefer the schema-canonical ``signature_b64`` field; fall back to
+    # the legacy ``value`` key so envelopes signed with earlier
+    # fairlearn-fhe releases still verify.
+    sig_str = signature.get("signature_b64")
+    if sig_str is None:
+        sig_str = signature.get("value")
+    if sig_str is None:
+        return ["signature value must be base64"]
     try:
-        signature_bytes = b64decode(str(signature["value"]), validate=True)
-    except (KeyError, ValueError):
+        signature_bytes = b64decode(str(sig_str), validate=True)
+    except ValueError:
         return ["signature value must be base64"]
 
     key_bytes = (
@@ -296,6 +334,10 @@ def verify_envelope_signature(
     return []
 
 
+_DEFAULT_MIN_SECURITY_BITS = 128
+_MAX_OP_COUNT_KEY_LEN = 64
+
+
 def validate_envelope(
     payload: Mapping[str, Any] | MetricEnvelope,
     *,
@@ -303,7 +345,7 @@ def validate_envelope(
     max_observed_depth: int | None = None,
     max_age_seconds: float | None = None,
     now: float | None = None,
-    min_security_bits: int | None = None,
+    min_security_bits: int | None = _DEFAULT_MIN_SECURITY_BITS,
 ) -> list[str]:
     """Return validation errors for an audit-envelope payload.
 
@@ -318,7 +360,10 @@ def validate_envelope(
     - ``max_age_seconds`` rejects envelopes older than the given window
       (anti-replay). ``now`` defaults to ``time.time()``.
     - ``min_security_bits`` rejects parameter sets whose recorded
-      security level is below the verifier's minimum (e.g. ``128``).
+      security level is below the verifier's minimum. **Defaults to
+      128**; pass ``min_security_bits=0`` to opt out (e.g. for testing
+      benchmark contexts that intentionally use sub-128-bit
+      parameters).
     """
     data = payload.to_dict() if isinstance(payload, MetricEnvelope) else dict(payload)
     errors: list[str] = []
@@ -368,22 +413,33 @@ def validate_envelope(
     except (TypeError, ValueError):
         errors.append("observed_depth must be an integer")
 
-    for field_name in ("n_samples", "n_groups"):
-        try:
-            if int(data[field_name]) < 1:
-                errors.append(f"{field_name} must be positive")
-        except (TypeError, ValueError):
-            errors.append(f"{field_name} must be an integer")
+    try:
+        if int(data["n_samples"]) < 1:
+            errors.append("n_samples must be positive")
+    except (TypeError, ValueError):
+        errors.append("n_samples must be an integer")
+
+    try:
+        if int(data["n_groups"]) < 0:
+            errors.append("n_groups must be non-negative")
+    except (TypeError, ValueError):
+        errors.append("n_groups must be an integer")
 
     if not isinstance(data["op_counts"], Mapping):
         errors.append("op_counts must be a mapping")
     else:
         for name, value in data["op_counts"].items():
+            # Cap key length so a hostile envelope can't blow up our
+            # error strings (which feed terminal output and logs).
+            display = (
+                name if len(str(name)) <= _MAX_OP_COUNT_KEY_LEN
+                else str(name)[:_MAX_OP_COUNT_KEY_LEN] + "…"
+            )
             try:
                 if int(value) < 0:
-                    errors.append(f"op_counts[{name!r}] must be non-negative")
+                    errors.append(f"op_counts[{display!r}] must be non-negative")
             except (TypeError, ValueError):
-                errors.append(f"op_counts[{name!r}] must be an integer")
+                errors.append(f"op_counts[{display!r}] must be an integer")
 
     if not isinstance(data["metric_kwargs"], Mapping):
         errors.append("metric_kwargs must be a mapping")
@@ -395,8 +451,25 @@ def validate_envelope(
         signature = data["signature"]
         if not isinstance(signature, Mapping):
             errors.append("signature must be a mapping")
-        elif signature.get("algorithm") != SIGNATURE_ALGORITHM:
-            errors.append(f"unsupported signature algorithm {signature.get('algorithm')!r}")
+        else:
+            if signature.get("algorithm") != SIGNATURE_ALGORITHM:
+                errors.append(
+                    f"unsupported signature algorithm {signature.get('algorithm')!r}"
+                )
+            # Refuse the legacy ``value`` field at the schema layer:
+            # otherwise a relay can strip ``signature_b64`` and
+            # substitute a forged ``value`` to make a verifier that
+            # only calls ``validate_envelope`` (without
+            # ``verify_envelope_signature``) report "OK, signed" on a
+            # forged envelope. ``verify_envelope_signature`` still
+            # accepts the legacy field for back-compat reads of
+            # already-signed v0.2.2 envelopes.
+            if "signature_b64" not in signature:
+                errors.append(
+                    "signature must include the canonical 'signature_b64' "
+                    "field (legacy 'value' field is no longer accepted by "
+                    "validate_envelope; re-sign the envelope)."
+                )
 
     try:
         float(data["value"])
@@ -461,6 +534,31 @@ def estimate_security_bits(
     return 0
 
 
+def _openfhe_security_bits(ctx: CKKSContext) -> int:
+    """Best-effort security estimate for an OpenFHE context.
+
+    OpenFHE's ``HEStd`` enum maps directly onto the HE-standard
+    classical security levels. When the binding is not available, fall
+    back to the documented default (128-bit).
+    """
+    cc = getattr(ctx.raw, "crypto_context", None)
+    if cc is None:
+        return 128
+    try:
+        params = cc.GetCryptoParameters()
+        level = getattr(params, "GetSecurityLevel", None)
+        if level is None:
+            return 128
+        name = str(level()).rsplit(".", 1)[-1]
+    except Exception:
+        return 128
+    if "192" in name:
+        return 192
+    if "256" in name:
+        return 256
+    return 128
+
+
 def parameter_set_from_context(ctx: CKKSContext, *, depth: int | None = None) -> ParameterSet:
     """Build a :class:`ParameterSet` from an active CKKS context.
 
@@ -488,18 +586,43 @@ def parameter_set_from_context(ctx: CKKSContext, *, depth: int | None = None) ->
         coeff = ()
     if coeff:
         sec_bits = estimate_security_bits(int(ctx.poly_modulus_degree), sum(coeff))
+    elif ctx.backend_name == "openfhe":
+        # OpenFHE picks the modulus chain itself to satisfy the
+        # configured ``SetSecurityLevel`` (default ``HEStd_128_classic``).
+        # Read the level off the context if exposed; otherwise record
+        # the documented default of 128-bit. Recording 0 here would
+        # cause every OpenFHE envelope to fail default validation even
+        # though OpenFHE has actually built a 128-bit-secure context.
+        sec_bits = _openfhe_security_bits(ctx)
     else:
-        # Without coeff_mod_bit_sizes (e.g. OpenFHE) we cannot derive the
-        # security level; record 0 to signal "unknown" rather than overclaim.
+        # Unknown backend with no coefficient chain — record 0 to
+        # signal "unknown" rather than overclaim.
         sec_bits = 0
     if depth is None:
         depth = max(0, len(coeff) - 2) if coeff else 6
+    # Defensive: refuse to claim an oversized chain in the envelope —
+    # the dataclass __post_init__ also enforces this, but matching the
+    # check here surfaces the failure with full context.
+    from .context import _MAX_COEFF_MODULI  # local import to avoid cycle
+
+    if len(coeff) > _MAX_COEFF_MODULI:
+        raise ValueError(
+            f"context.coeff_mod_bit_sizes has {len(coeff)} entries "
+            f"(> {_MAX_COEFF_MODULI}); refusing to record."
+        )
+    # CKKS scales are always set to a power of two by build_context.
+    # ``int(scale).bit_length() - 1`` is exact for that case; the
+    # earlier ``round(scale).bit_length() - 1`` form was off-by-one
+    # whenever ``scale`` came back as ``2^k - 1`` from rescaling
+    # arithmetic.
+    scale_int = int(ctx.scale)
+    scaling_factor_bits = max(0, scale_int.bit_length() - 1)
     return ParameterSet(
         backend=backend_label,
         poly_modulus_degree=int(ctx.poly_modulus_degree),
         security_bits=sec_bits,
         multiplicative_depth=int(depth),
         coeff_mod_bit_sizes=coeff,
-        scaling_factor_bits=int(round(ctx.scale).bit_length() - 1),
+        scaling_factor_bits=scaling_factor_bits,
         backend_version=backend_version,
     )

@@ -7,15 +7,25 @@ operating on encrypted CKKS predictions.
 CKKS arithmetic is well-suited to MSE: the per-sample squared error
 ``(y - ŷ)²`` expands to ``y² - 2yŷ + ŷ²`` and only the ciphertext-
 plaintext pieces (``-2yŷ`` and ``ŷ²``) need encrypted multiplies.
-``ŷ²`` is one ct×ct multiply (depth 1); the per-group sum is a
-plaintext-mask multiply on top.
+
+Multiplicative-depth budget:
+
+- Plaintext masks: depth 2 — ``ŷ²`` is one ct×ct multiply (depth 1)
+  and the per-group plaintext-mask multiply takes it to depth 2.
+- Encrypted masks: depth 2 — we pre-fold ``mask · sw`` into a single
+  ct×pt multiply (depth 1) and then ct×ct against ``ŷ²`` to land at
+  depth 2 max. Note this matches the global depth-6 default with
+  margin to spare; lower-depth contexts (e.g. depth-2 fixtures) will
+  refuse the encrypted-mask path at the level-budget check.
 
 MAE requires ``|y - ŷ|`` which is non-polynomial. We approximate via
-``sqrt((y - ŷ)² + ε)`` evaluated on the **decrypted per-group sums**
-— the ciphertext path produces the squared error sum and we take the
-square root after decryption. The approximation cost is therefore
-zero ciphertext depth for the absolute value itself; the MSE
-ciphertext circuit is reused.
+``sqrt(MSE)`` evaluated on the **decrypted per-group sums** — the
+ciphertext path produces the squared error sum and we take the
+square root after decryption. This is exact for constant residuals
+and an upper bound otherwise (Jensen's inequality); pass
+``approximate=True`` (the default) to acknowledge the approximation,
+or ``approximate=False`` to refuse it (raises ``NotImplementedError``).
+The MSE ciphertext circuit is reused.
 
 R² is ``1 - RSS / TSS`` where TSS is plaintext (computed from
 ``y_true`` only). RSS comes from the same MSE circuit.
@@ -32,6 +42,7 @@ from typing import Any
 import fairlearn.metrics as _fl
 import numpy as np
 
+from .._circuits import _safe_div
 from .._groups import EncryptedMaskSet, group_masks
 from ..encrypted import EncryptedVector
 
@@ -104,8 +115,13 @@ def _per_group_mse_terms(
             cross = float(
                 y_pred_enc.mul_ct(mask_ct).mul_pt(2.0 * y * sw).sum_all().first_slot()
             )
+            # Pre-fold mask · sw into a single ct×pt (depth 1), then
+            # ct×ct against ŷ² (depth 1) — total depth 2. Doing
+            # ``yhat_sq.mul_ct(mask_ct).mul_pt(sw)`` instead would land
+            # at depth 3 and exceed any depth-2 fixture.
+            weighted_mask = mask_ct.mul_pt(sw)
             yhat_sq_g = float(
-                yhat_sq.mul_ct(mask_ct).mul_pt(sw).sum_all().first_slot()
+                yhat_sq.mul_ct(weighted_mask).sum_all().first_slot()
             )
             rss = sum_y2 - cross + yhat_sq_g
         else:
@@ -136,24 +152,24 @@ def _overall_mse(
 
 
 def _mse(rss: float, n: float) -> float:
-    if n <= 0:
-        return 0.0
-    return rss / n
+    # ``rss`` is already clamped to >= 0 in _per_group_mse_terms; the
+    # canonical _safe_div clips small CKKS noise above the bound away.
+    return _safe_div(rss, n, clip_lower=0.0, clip_upper=None)
 
 
 def _mae(rss: float, n: float) -> float:
-    if n <= 0:
-        return 0.0
     # MAE is approximated as sqrt(MSE) — exact for constant residuals,
-    # an upper bound otherwise (Jensen's inequality). This matches the
-    # CKKS-friendly approximation noted in the module docstring.
-    return math.sqrt(rss / n)
+    # an upper bound otherwise (Jensen's inequality). See module docstring.
+    mse = _safe_div(rss, n, clip_lower=0.0, clip_upper=None)
+    return math.sqrt(mse)
 
 
 def _r2(rss: float, tss: float) -> float:
+    # 1 - rss/tss; rss/tss is non-negative under our clamping. R² may
+    # be arbitrarily negative for poor fits so we don't clip the result.
     if tss <= 0:
         return 0.0
-    return 1.0 - rss / tss
+    return 1.0 - _safe_div(rss, tss, clip_lower=0.0, clip_upper=None)
 
 
 def mean_squared_error_group_max(
@@ -181,13 +197,28 @@ def mean_absolute_error_group_max(
     *,
     sensitive_features,
     sample_weight=None,
+    approximate: bool = True,
 ) -> float:
+    """Encrypted-aware ``mean_absolute_error_group_max``.
+
+    The encrypted path approximates MAE as ``sqrt(MSE)`` per group
+    (exact for constant residuals, an upper bound otherwise; see
+    module docstring). Pass ``approximate=False`` to refuse the
+    approximation — the call then raises ``NotImplementedError``
+    instead of silently returning an inflated value.
+    """
     if not _needs_encrypted(y_pred, sensitive_features):
         return _fl.mean_absolute_error_group_max(
             y_true,
             y_pred,
             sensitive_features=sensitive_features,
             sample_weight=sample_weight,
+        )
+    if not approximate:
+        raise NotImplementedError(
+            "Encrypted MAE is only available as a sqrt(MSE) approximation; "
+            "pass approximate=True to acknowledge this, or compute MAE "
+            "from the decrypted predictions."
         )
     sw = _sw(sample_weight)
     per_group = _per_group_mse_terms(y_true, y_pred, sensitive_features, sw)

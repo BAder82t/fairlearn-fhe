@@ -12,17 +12,12 @@ from typing import Any
 import fairlearn.metrics as _fl
 import numpy as np
 
+from .._circuits import _safe_div
 from ..encrypted import EncryptedVector
-
-_EPS = 1e-12
 
 
 def _is_encrypted(x) -> bool:
     return isinstance(x, EncryptedVector)
-
-
-def _safe_div(num: float, den: float) -> float:
-    return num / den if den > _EPS else 0.0
 
 
 # ---------------------------------------------------------------------------

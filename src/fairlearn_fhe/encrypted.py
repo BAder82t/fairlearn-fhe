@@ -11,8 +11,9 @@ envelope. Counters are global; reset between calls with
 
 from __future__ import annotations
 
+import contextlib
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -30,11 +31,25 @@ _COUNTER_KEYS = (
 
 OP_COUNTERS: dict[str, int] = {k: 0 for k in _COUNTER_KEYS}
 _COUNTER_LOCK = threading.Lock()
+_LOCAL = threading.local()
+
+
+def _active_sessions() -> list[dict[str, int]]:
+    if not hasattr(_LOCAL, "stack"):
+        _LOCAL.stack = []
+    return _LOCAL.stack
 
 
 def _inc(key: str, by: int = 1) -> None:
     with _COUNTER_LOCK:
         OP_COUNTERS[key] += by
+    # Per-thread stack of active sessions: each frame in the stack
+    # accumulates the operations performed in this thread while that
+    # session is open. Other threads' sessions are untouched, so a
+    # concurrent audit's recorded ``observed_depth`` reflects only
+    # its own circuit work.
+    for session in _active_sessions():
+        session[key] = session.get(key, 0) + by
 
 
 def reset_op_counters() -> None:
@@ -46,6 +61,29 @@ def reset_op_counters() -> None:
 def snapshot_op_counters() -> dict[str, int]:
     with _COUNTER_LOCK:
         return dict(OP_COUNTERS)
+
+
+@contextlib.contextmanager
+def op_session() -> Iterator[dict[str, int]]:
+    """Capture only the operations performed in this thread's ``with`` block.
+
+    Yields a dict that accumulates per-key counts as ``_inc`` is
+    called from the **current thread** during the block. Sessions
+    nest: an inner session sees its own ops, and the outer session
+    sees both its and the inner's ops.
+
+    Per-thread isolation is exact — operations performed by other
+    threads (including their own sessions) never appear here. The
+    global ``OP_COUNTERS`` continues to record cross-thread totals
+    for backwards compatibility, but is **not** the right source for
+    audit depth accounting under concurrency.
+    """
+    delta: dict[str, int] = {k: 0 for k in _COUNTER_KEYS}
+    _active_sessions().append(delta)
+    try:
+        yield delta
+    finally:
+        _active_sessions().remove(delta)
 
 
 @dataclass
@@ -62,6 +100,14 @@ class EncryptedVector:
     @classmethod
     def encrypt(cls, ctx: CKKSContext, values: Sequence[float]) -> EncryptedVector:
         vals = [float(v) for v in np.asarray(values).ravel()]
+        if len(vals) > ctx.n_slots:
+            raise ValueError(
+                f"input vector has {len(vals)} entries but the active CKKS "
+                f"context only has {ctx.n_slots} plaintext slots; either "
+                "rebuild the context with a larger poly_modulus_degree / "
+                "batch_size or shard the vector across multiple "
+                "ciphertexts before encrypting."
+            )
         ct = ctx.encrypt_vector(vals)
         return cls(ciphertext=ct, n=len(vals), ctx=ctx, depth=0)
 

@@ -21,6 +21,7 @@ plaintext via decryption (a logged warning) if the user opts in via
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -107,8 +108,7 @@ def _resolve_metric(
     # Unwrap functools.partial so derived metrics built on top of the
     # canonical Fairlearn callables route through the encrypted path.
     base = metric
-    import functools as _ft
-    while isinstance(base, _ft.partial):
+    while isinstance(base, functools.partial):
         base = base.func
     kind = _KNOWN_ENCRYPTED.get(base)
     is_enc_set = isinstance(masks, EncryptedMaskSet)
@@ -243,51 +243,51 @@ def _build_encrypted(
     sample_params,
     allow_decrypt: bool,
 ) -> EncryptedMetricFrame:
-        if isinstance(sensitive_features, EncryptedMaskSet):
-            labels = list(sensitive_features.labels)
-            masks: Any = sensitive_features
-        else:
-            labels, masks = group_masks(sensitive_features)
-        y = np.asarray(y_true, dtype=float)
+    if isinstance(sensitive_features, EncryptedMaskSet):
+        labels = list(sensitive_features.labels)
+        masks: Any = sensitive_features
+    else:
+        labels, masks = group_masks(sensitive_features)
+    y = np.asarray(y_true, dtype=float)
 
-        if callable(metrics):
-            metric_dict = {_metric_name(metrics): metrics}
-        else:
-            metric_dict = dict(metrics)  # mapping[name -> callable]
+    if callable(metrics):
+        metric_dict = {_metric_name(metrics): metrics}
+    else:
+        metric_dict = dict(metrics)  # mapping[name -> callable]
 
-        sample_params = dict(sample_params or {})
+    sample_params = dict(sample_params or {})
 
-        per_group_rows: dict[str, dict[object, float]] = {}
-        overall: dict[str, float] = {}
+    per_group_rows: dict[str, dict[object, float]] = {}
+    overall: dict[str, float] = {}
 
-        for name, metric in metric_dict.items():
-            sw = None
-            if metric_dict and isinstance(sample_params, dict):
-                # Fairlearn supports either flat ``{sample_weight: ...}`` or
-                # nested ``{metric_name: {sample_weight: ...}}``.
-                if name in sample_params and isinstance(sample_params[name], Mapping):
-                    sw = sample_params[name].get("sample_weight")
-                elif "sample_weight" in sample_params:
-                    sw = sample_params["sample_weight"]
-            sw = None if sw is None else np.asarray(sw, dtype=float)
+    for name, metric in metric_dict.items():
+        sw = None
+        if metric_dict and isinstance(sample_params, dict):
+            # Fairlearn supports either flat ``{sample_weight: ...}`` or
+            # nested ``{metric_name: {sample_weight: ...}}``.
+            if name in sample_params and isinstance(sample_params[name], Mapping):
+                sw = sample_params[name].get("sample_weight")
+            elif "sample_weight" in sample_params:
+                sw = sample_params["sample_weight"]
+        sw = None if sw is None else np.asarray(sw, dtype=float)
 
-            per_group = _resolve_metric(metric, name, y, y_pred, masks, sw, allow_decrypt)
-            per_group_rows[name] = per_group
-            # Overall = same metric with a single all-ones mask.
-            all_mask = {None: np.ones(len(y))}
-            overall_dict = _resolve_metric(metric, name, y, y_pred, all_mask, sw, allow_decrypt)
-            overall[name] = float(next(iter(overall_dict.values())))
+        per_group = _resolve_metric(metric, name, y, y_pred, masks, sw, allow_decrypt)
+        per_group_rows[name] = per_group
+        # Overall = same metric with a single all-ones mask.
+        all_mask = {None: np.ones(len(y))}
+        overall_dict = _resolve_metric(metric, name, y, y_pred, all_mask, sw, allow_decrypt)
+        overall[name] = float(next(iter(overall_dict.values())))
 
-        by_group = pd.DataFrame(
-            {name: [per_group_rows[name][lbl] for lbl in labels] for name in metric_dict},
-            index=pd.Index(labels, name="sensitive_feature_0"),
-        )
-        return EncryptedMetricFrame(
-            overall=pd.Series(overall),
-            by_group=by_group,
-            metric_names=list(metric_dict.keys()),
-            group_labels=list(labels),
-        )
+    by_group = pd.DataFrame(
+        {name: [per_group_rows[name][lbl] for lbl in labels] for name in metric_dict},
+        index=pd.Index(labels, name="sensitive_feature_0"),
+    )
+    return EncryptedMetricFrame(
+        overall=pd.Series(overall),
+        by_group=by_group,
+        metric_names=list(metric_dict.keys()),
+        group_labels=list(labels),
+    )
 
 
 def _metric_name(metric: Callable) -> str:
