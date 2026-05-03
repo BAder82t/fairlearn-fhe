@@ -33,7 +33,6 @@ from fairlearn_fhe import (
     InsecureCKKSParametersWarning,
     audit_metric,
     encrypt,
-    encrypt_sensitive_features,
     op_session,
     sign_envelope,
     validate_envelope,
@@ -45,7 +44,6 @@ from fairlearn_fhe.envelope import (
     ParameterSet,
     parameter_set_from_context,
 )
-
 
 # ---------------------------------------------------------------------------
 # validate_envelope rejects signature blocks lacking signature_b64
@@ -155,6 +153,7 @@ def test_cli_require_signature_unreadable_key_does_not_pass(
 def test_group_min_routes_correctly_when_name_is_rewritten(monkeypatch, small_dataset):
     """Renaming ``_impl.__name__`` must not break reduction routing."""
     import fairlearn.metrics as fl
+
     from fairlearn_fhe.metrics._scoring_metrics import _group_min
 
     monkeypatch.setattr(fl, "balanced_accuracy_score_group_min", None, raising=False)
@@ -242,8 +241,8 @@ def test_evaluator_wrapper_is_fully_independent(ctx):
 
 
 def test_regression_safe_div_imported_from_circuits():
-    from fairlearn_fhe.metrics import _regression_metrics as rm
     from fairlearn_fhe._circuits import _safe_div as canonical
+    from fairlearn_fhe.metrics import _regression_metrics as rm
 
     assert rm._safe_div is canonical
 

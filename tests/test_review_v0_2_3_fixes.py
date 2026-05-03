@@ -48,7 +48,6 @@ from fairlearn_fhe.envelope import (
 from fairlearn_fhe.metrics import mean_absolute_error_group_max
 from fairlearn_fhe.metrics._base_metrics import _safe_div as base_safe_div
 
-
 # ---------------------------------------------------------------------------
 # make_evaluator_context never mutates the keyholder's context
 # ---------------------------------------------------------------------------
@@ -457,6 +456,7 @@ def test_cli_inspect_sanitises_payload(tmp_path: Path, capsys):
 def test_scoring_group_min_fallback_when_upstream_missing(monkeypatch, small_dataset):
     """Simulate an older fairlearn install that lacks ``*_group_min``."""
     import fairlearn.metrics as fl
+
     from fairlearn_fhe.metrics._scoring_metrics import _group_min
 
     monkeypatch.setattr(fl, "balanced_accuracy_score_group_min", None, raising=False)

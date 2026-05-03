@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re as _re
 import sys
 from pathlib import Path
 from typing import Any
@@ -149,8 +150,6 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 # inspect — pretty-print summary of envelope contents
 # ---------------------------------------------------------------------------
 
-
-import re as _re
 
 # ANSI CSI sequences (`\x1b[...<letter>`) — strip the whole sequence,
 # not just the leading ESC, so that a partial escape arriving on a
