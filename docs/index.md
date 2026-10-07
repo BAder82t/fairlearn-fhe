@@ -1,6 +1,6 @@
 # fairlearn-fhe
 
-**Drop-in encrypted Fairlearn metrics.** Identical API surface; ciphertext arithmetic over CKKS via TenSEAL or OpenFHE.
+**Drop-in encrypted Fairlearn metrics.** Fairlearn-compatible API for the supported metric subset; ciphertext arithmetic over CKKS via TenSEAL or OpenFHE.
 
 `fairlearn-fhe` is an early-stage project maintained at
 [BAder82t/fairlearn-fhe](https://github.com/BAder82t/fairlearn-fhe).

@@ -22,6 +22,7 @@ plaintext via decryption (a logged warning) if the user opts in via
 from __future__ import annotations
 
 import functools
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -40,6 +41,11 @@ from .._circuits import (
 )
 from .._groups import EncryptedMaskSet, group_masks
 from ..encrypted import EncryptedVector
+
+
+class DecryptFallbackWarning(UserWarning):
+    """y_pred was decrypted to evaluate a metric outside the encrypted catalogue."""
+
 
 _KNOWN_ENCRYPTED: dict[Any, str] = {
     _fl.selection_rate: "selection_rate",
@@ -108,9 +114,17 @@ def _resolve_metric(
     # Unwrap functools.partial so derived metrics built on top of the
     # canonical Fairlearn callables route through the encrypted path.
     base = metric
+    bound_kwargs: dict[str, Any] = {}
     while isinstance(base, functools.partial):
+        bound_kwargs = {**base.keywords, **bound_kwargs}
         base = base.func
     kind = _KNOWN_ENCRYPTED.get(base)
+    if kind in ("tpr", "fpr", "tnr", "fnr"):
+        pl = bound_kwargs.get("pos_label")
+        if pl is not None and pl not in (1, 1.0):
+            raise NotImplementedError(
+                f"Encrypted {name!r} only supports pos_label=1; got {pl!r}."
+            )
     is_enc_set = isinstance(masks, EncryptedMaskSet)
     if kind == "selection_rate":
         return selection_rate_per_group(y_pred_enc, masks, sample_weight=sample_weight)
@@ -149,6 +163,13 @@ def _resolve_metric(
             "sensitive_features."
         )
     # Decrypt-and-fallback path (plaintext masks only).
+    warnings.warn(
+        f"metric {name!r} is not in the encrypted catalogue: decrypting "
+        "y_pred and computing in plaintext. This defeats the encryption "
+        "privacy guarantee for this call.",
+        DecryptFallbackWarning,
+        stacklevel=2,
+    )
     y_p = y_pred_enc.decrypt()
     out: dict[object, float] = {}
     for label, mask in masks.items():

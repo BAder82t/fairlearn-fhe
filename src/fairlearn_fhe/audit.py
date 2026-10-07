@@ -17,7 +17,7 @@ import numpy as np
 from . import metrics as fhe_metrics
 from ._groups import EncryptedMaskSet, group_masks
 from .context import CKKSContext, default_context
-from .encrypted import EncryptedVector, encrypt, op_session
+from .encrypted import EncryptedVector, encrypt, op_session, session_max_depth
 from .envelope import MetricEnvelope, parameter_set_from_context
 
 
@@ -171,8 +171,8 @@ def audit_metric(
             else:
                 labels, _ = group_masks(sensitive_features)
                 n_groups = len(labels)
+        observed_depth = session_max_depth(counts)
 
-    observed_depth = counts["ct_pt_muls"] + counts["ct_ct_muls"]
     trust_model, metric_kwargs, input_hashes = _audit_metadata(y_true, sensitive_features, kwargs)
 
     return MetricEnvelope(

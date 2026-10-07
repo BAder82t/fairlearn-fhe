@@ -1239,11 +1239,12 @@ def test_make_derived_metric_with_other_param_passes_through():
         return float(np.mean(y_pred))
 
     derived = make_derived_metric(
-        metric=metric_with_extra, transform="difference"
+        metric=metric_with_extra, transform="difference", allow_decrypt=True
     )
-    val = derived(
-        y, yp_enc, sensitive_features=sf, custom_kwarg=42
-    )
+    with pytest.warns(UserWarning, match="decrypting"):
+        val = derived(
+            y, yp_enc, sensitive_features=sf, custom_kwarg=42
+        )
     assert isinstance(val, float)
 
 
@@ -1519,10 +1520,13 @@ def test_make_derived_metric_method_kwarg_routed_to_transform():
     def my_metric(y_true, y_pred):
         return float(np.mean(y_pred))
 
-    derived = make_derived_metric(metric=my_metric, transform="difference")
-    val = derived(
-        y, yp_enc, sensitive_features=sf, method="to_overall"
+    derived = make_derived_metric(
+        metric=my_metric, transform="difference", allow_decrypt=True
     )
+    with pytest.warns(UserWarning, match="decrypting"):
+        val = derived(
+            y, yp_enc, sensitive_features=sf, method="to_overall"
+        )
     assert isinstance(val, float)
 
 

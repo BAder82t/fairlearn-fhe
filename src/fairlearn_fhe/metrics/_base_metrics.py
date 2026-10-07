@@ -64,6 +64,15 @@ def mean_prediction(y_true, y_pred, sample_weight=None) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _require_default_pos_label(name: str, pos_label) -> None:
+    if pos_label is not None and pos_label not in (1, 1.0):
+        raise NotImplementedError(
+            f"Encrypted {name} only supports pos_label=1 (binary {{0, 1}} "
+            f"labels); got {pos_label!r}. Relabel y_true/y_pred or decrypt "
+            "and use plaintext Fairlearn."
+        )
+
+
 def _conf_rates(y_true, y_pred_enc: EncryptedVector, sample_weight) -> dict:
     y = np.asarray(y_true, dtype=float)
     sw = np.ones_like(y) if sample_weight is None else np.asarray(sample_weight, dtype=float)
@@ -84,6 +93,7 @@ def true_positive_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> fl
         return _fl.true_positive_rate(
             y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
         )
+    _require_default_pos_label("true_positive_rate", pos_label)
     return _conf_rates(y_true, y_pred, sample_weight)["tpr"]
 
 
@@ -92,6 +102,7 @@ def true_negative_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> fl
         return _fl.true_negative_rate(
             y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
         )
+    _require_default_pos_label("true_negative_rate", pos_label)
     return _conf_rates(y_true, y_pred, sample_weight)["tnr"]
 
 
@@ -100,6 +111,7 @@ def false_positive_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> f
         return _fl.false_positive_rate(
             y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
         )
+    _require_default_pos_label("false_positive_rate", pos_label)
     return _conf_rates(y_true, y_pred, sample_weight)["fpr"]
 
 
@@ -108,6 +120,7 @@ def false_negative_rate(y_true, y_pred, sample_weight=None, pos_label=None) -> f
         return _fl.false_negative_rate(
             y_true, y_pred, sample_weight=sample_weight, pos_label=pos_label
         )
+    _require_default_pos_label("false_negative_rate", pos_label)
     return _conf_rates(y_true, y_pred, sample_weight)["fnr"]
 
 

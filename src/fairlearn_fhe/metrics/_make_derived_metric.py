@@ -27,6 +27,7 @@ class _EncryptedDerivedMetric:
         metric: Callable[..., float],
         transform: str,
         sample_param_names: list[str] | None,
+        allow_decrypt: bool = False,
     ):
         if not callable(metric):
             raise ValueError("metric must be callable")
@@ -42,6 +43,7 @@ class _EncryptedDerivedMetric:
         self._metric = metric
         self._transform = transform
         self._sample_params = sample_param_names or []
+        self._allow_decrypt = allow_decrypt
 
         # Plaintext fallback — preserves Fairlearn's exact behaviour when
         # y_pred is plaintext.
@@ -78,7 +80,7 @@ class _EncryptedDerivedMetric:
             y_pred=y_pred,
             sensitive_features=sensitive_features,
             sample_params=sample_params,
-            allow_decrypt=True,  # arbitrary user metric → fall through
+            allow_decrypt=self._allow_decrypt,
         )
 
         if self._transform == "difference":
@@ -97,10 +99,17 @@ def make_derived_metric(
     metric: Callable[..., float],
     transform: str,
     sample_param_names: list[str] | None = None,
+    allow_decrypt: bool = False,
 ) -> Callable[..., float | int]:
-    """Encrypted-aware analogue of :func:`fairlearn.metrics.make_derived_metric`."""
+    """Encrypted-aware analogue of :func:`fairlearn.metrics.make_derived_metric`.
+
+    A metric outside the encrypted catalogue raises ``ValueError`` on
+    encrypted input unless ``allow_decrypt=True``, which decrypts
+    ``y_pred`` (emitting ``DecryptFallbackWarning``).
+    """
     if sample_param_names is None:
         sample_param_names = ["sample_weight"]
     return _EncryptedDerivedMetric(
         metric=metric, transform=transform, sample_param_names=sample_param_names,
+        allow_decrypt=allow_decrypt,
     )

@@ -12,6 +12,7 @@ envelope. Counters are global; reset between calls with
 from __future__ import annotations
 
 import contextlib
+import math
 import threading
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -52,6 +53,31 @@ def _inc(key: str, by: int = 1) -> None:
         session[key] = session.get(key, 0) + by
 
 
+def _depths() -> dict[int, int]:
+    if not hasattr(_LOCAL, "depths"):
+        _LOCAL.depths = {}
+    return _LOCAL.depths
+
+
+def _note_depth(depth: int) -> None:
+    """Record ``depth`` against every open session in this thread (max-merge)."""
+    depths = _depths()
+    for session in _active_sessions():
+        key = id(session)
+        if depth > depths.get(key, 0):
+            depths[key] = depth
+
+
+def session_max_depth(session: dict[str, int]) -> int:
+    """Longest multiplicative dependency chain seen in ``session``.
+
+    Unlike ``ct_pt_muls + ct_ct_muls`` (a total operation count), this is
+    the true circuit depth: independent multiplications on separate groups
+    do not stack.
+    """
+    return _depths().get(id(session), 0)
+
+
 def reset_op_counters() -> None:
     with _COUNTER_LOCK:
         for k in OP_COUNTERS:
@@ -84,6 +110,7 @@ def op_session() -> Iterator[dict[str, int]]:
         yield delta
     finally:
         _active_sessions().remove(delta)
+        _depths().pop(id(delta), None)
 
 
 @dataclass
@@ -184,6 +211,7 @@ class EncryptedVector:
             new_ct = be.mul_pt(self.ciphertext, pt, self.ctx.raw)
         else:
             new_ct = be.mul_pt(self.ciphertext, pt)
+        _note_depth(self.depth + 1)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth + 1)
 
     def mul_scalar(self, s: float) -> EncryptedVector:
@@ -194,6 +222,7 @@ class EncryptedVector:
         else:
             new_ct = be.mul_scalar(self.ciphertext, float(s))
         # CKKS scalar mul consumes one multiplicative level on both backends.
+        _note_depth(self.depth + 1)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=self.depth + 1)
 
     def mul_ct(self, other: EncryptedVector) -> EncryptedVector:
@@ -203,11 +232,12 @@ class EncryptedVector:
             new_ct = be.mul_ct(self.ciphertext, other.ciphertext, self.ctx.raw)
         else:
             new_ct = be.mul_ct(self.ciphertext, other.ciphertext)
+        _note_depth(max(self.depth, other.depth) + 1)
         return EncryptedVector(new_ct, self.n, self.ctx, depth=max(self.depth, other.depth) + 1)
 
     def sum_all(self) -> EncryptedVector:
         if self.n > 1:
-            _inc("rotations", int(np.log2(self.n)))
+            _inc("rotations", math.ceil(math.log2(self.n)))
         be = self._be()
         if self._is_openfhe():
             new_ct = be.sum_all(self.ciphertext, self.n, self.ctx.raw)
